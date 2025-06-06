@@ -1,3 +1,16 @@
+# CoffeeFarmer
+
+A web application for coffee farming visualization and management.
+
+## Environment Variables
+
+This project requires the following environment variables:
+
+- `VITE_SUPABASE_URL`: Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY`: Your Supabase project anonymous key
+
+These are configured in GitHub Secrets for deployment.
+
 # React + Vite https://izza3000.github.io/CoffeeFarmer/
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
