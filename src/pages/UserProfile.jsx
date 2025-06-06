@@ -2,87 +2,109 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useTheme } from "../lib/ThemeContext";
+import { useAuth } from "../lib/AuthProvider";
+import Layout from '../components/Layout';
 
 const UserProfile = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // State for editable profile fields
-  const [firstName, setFirstName] = useState("");
-  const [middleName, setMiddleName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [profileData, setProfileData] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+  });
 
   // State for password change
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordData, setPasswordData] = useState({
+    newPassword: "",
+    confirmNewPassword: "",
+  });
   const [passwordChangeMessage, setPasswordChangeMessage] = useState("");
 
   useEffect(() => {
-    const fetchUser = async () => {
-      setLoading(true);
-      setError("");
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-
+    const fetchUserProfile = async () => {
       if (!authUser) {
         navigate("/login");
         return;
       }
 
-      // Fetch user's full details from 'users' table
-      const { data, error } = await supabase
-        .from("users")
-        .select("first_name, middle_name, last_name, email, role")
-        .eq("id", authUser.id) // Use authUser.id for fetching specific user
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("first_name, middle_name, last_name")
+          .eq("id", authUser.id)
+          .single();
 
-      if (error) {
+        if (error) throw error;
+
+        setProfileData({
+          firstName: data.first_name || "",
+          middleName: data.middle_name || "",
+          lastName: data.last_name || "",
+        });
+      } catch (error) {
         console.error("Error fetching user profile:", error.message);
         setError("Failed to load user profile. Please try again.");
-      } else {
-        setUser(data);
-        setFirstName(data.first_name || "");
-        setMiddleName(data.middle_name || "");
-        setLastName(data.last_name || "");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
-    fetchUser();
-  }, [navigate]);
+
+    fetchUserProfile();
+  }, [navigate, authUser]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setProfileData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    setError(""); // Clear previous errors
-    setPasswordChangeMessage(""); // Clear password messages
+    setError("");
+    setPasswordChangeMessage("");
 
-    const updatedDetails = {
-      first_name: firstName,
-      middle_name: middleName,
-      last_name: lastName,
-    };
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          first_name: profileData.firstName,
+          middle_name: profileData.middleName,
+          last_name: profileData.lastName,
+        })
+        .eq("id", authUser?.id);
 
-    const { data, error } = await supabase
-      .from("users")
-      .update(updatedDetails)
-      .eq("id", user?.id); // Use user.id for update
-
-    if (error) {
+      if (error) throw error;
+      setError("Profile updated successfully!");
+    } catch (error) {
       console.error("Error updating profile:", error.message);
       setError("Error updating profile: " + error.message);
-    } else {
-      // Update local state with new values
-      setUser(prevUser => ({ ...prevUser, ...updatedDetails }));
-      setError("Profile updated successfully!"); // Use error state for success message
     }
   };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setPasswordChangeMessage(""); // Clear previous messages
-    setError(""); // Clear general errors
+    setPasswordChangeMessage("");
+    setError("");
+
+    const { newPassword, confirmNewPassword } = passwordData;
 
     if (newPassword !== confirmNewPassword) {
       setPasswordChangeMessage("Passwords do not match.");
@@ -94,24 +116,22 @@ const UserProfile = () => {
     }
 
     try {
-      const { data, error } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
-      if (error) {
-        console.error("Error changing password:", error.message);
-        setPasswordChangeMessage("Error changing password: " + error.message);
-      } else {
-        setPasswordChangeMessage("Password changed successfully!");
-        setNewPassword("");
-        setConfirmNewPassword("");
-      }
-    } catch (err) {
-      console.error("Unexpected error changing password:", err);
-      setPasswordChangeMessage("An unexpected error occurred.");
+      if (error) throw error;
+
+      setPasswordChangeMessage("Password changed successfully!");
+      setPasswordData({
+        newPassword: "",
+        confirmNewPassword: "",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      setPasswordChangeMessage("Error changing password: " + error.message);
     }
   };
-
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -141,8 +161,7 @@ const UserProfile = () => {
   ];
 
   // Determine which set of links to use based on the current user's role
-  const navLinks = user?.role === "admin" ? adminLinks : userLinks;
-
+  const navLinks = authUser?.role === "admin" ? adminLinks : userLinks;
 
   if (loading) {
     return (
@@ -252,8 +271,9 @@ const UserProfile = () => {
                     <input
                       type="text"
                       id="firstName"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
+                      name="firstName"
+                      value={profileData.firstName}
+                      onChange={handleInputChange}
                       className={`mt-1 block w-full rounded-md shadow-sm text-black ${
                         isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
@@ -268,8 +288,9 @@ const UserProfile = () => {
                     <input
                       type="text"
                       id="middleName"
-                      value={middleName}
-                      onChange={(e) => setMiddleName(e.target.value)}
+                      name="middleName"
+                      value={profileData.middleName}
+                      onChange={handleInputChange}
                       className={`mt-1 block w-full rounded-md shadow-sm text-black ${
                         isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
@@ -284,8 +305,9 @@ const UserProfile = () => {
                     <input
                       type="text"
                       id="lastName"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      name="lastName"
+                      value={profileData.lastName}
+                      onChange={handleInputChange}
                       className={`mt-1 block w-full rounded-md shadow-sm text-black ${
                         isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
@@ -325,8 +347,9 @@ const UserProfile = () => {
                     <input
                       type="password"
                       id="newPassword"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
+                      name="newPassword"
+                      value={passwordData.newPassword}
+                      onChange={handlePasswordChange}
                       className={`mt-1 block w-full rounded-md shadow-sm text-black ${
                         isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
@@ -341,8 +364,9 @@ const UserProfile = () => {
                     <input
                       type="password"
                       id="confirmNewPassword"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      name="confirmNewPassword"
+                      value={passwordData.confirmNewPassword}
+                      onChange={handlePasswordChange}
                       className={`mt-1 block w-full rounded-md shadow-sm text-black ${
                         isDarkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'

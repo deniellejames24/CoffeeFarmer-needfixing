@@ -7,6 +7,16 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
 
+    // Add signOut function
+    const signOut = async () => {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            console.error('Error signing out:', error.message);
+            throw error;
+        }
+        setUser(null);
+    };
+
     // Fetch and set user details on initial load and on auth state change
     useEffect(() => {
         const fetchUser = async () => {
@@ -47,7 +57,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, setUser }}>
+        <AuthContext.Provider value={{ user, setUser, signOut }}>
             {children}  {/* Provide user data to all components inside AuthProvider */}
         </AuthContext.Provider>
     );

@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useTheme } from "../lib/ThemeContext";
-
+import Layout from '../components/Layout';
 
 const UserManagement = () => {
   const navigate = useNavigate();
@@ -250,252 +250,121 @@ const UserManagement = () => {
     }
   };
 
-
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'} flex`}>
-      {/* Sidebar Navigation */}
-      <div className={`w-64 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg relative`}>
-        <div className={`p-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="text-2xl">☕</div>
-              <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Admin Panel</h1>
-            </div>
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-md ${isDarkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
-            >
-              {isDarkMode ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
-          </div>
+    <Layout>
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            User Management
+          </h2>
         </div>
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {adminLinks.map((link) => (
-              <li key={link.path}>
-                <button
-                  onClick={() => navigate(link.path)}
-                  className={`w-full text-left px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    location.pathname === link.path
-                      ? isDarkMode
-                        ? 'bg-gray-700 text-indigo-400'
-                        : 'bg-indigo-50 text-indigo-500'
-                      : isDarkMode
-                        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-indigo-400'
-                        : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-indigo-400'
-                  }`}
-                >
-                  {link.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className={`sticky bottom-0 w-full p-4 border-t ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            {user && (
+              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Welcome back, {user.first_name} {user.last_name}
+              </p>
+            )}
+          </div>
           <button
-            onClick={handleLogout}
-            className={`w-full px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+            onClick={handleAddNewUserClick}
+            className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isDarkMode
-                ? 'text-indigo-400 bg-gray-700 hover:bg-gray-600 focus:ring-indigo-500'
-                : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 focus:ring-indigo-500'
+                ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
             }`}
           >
-            Logout
+            Add New User
           </button>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>User Management</h1>
-              {user && (
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Welcome back, {user.first_name} {user.last_name}
-                </p>
-              )}
-            </div>
-            <button
-              onClick={handleAddNewUserClick}
-              className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                isDarkMode
-                  ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                  : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-              }`}
-            >
-              Add New User
-            </button>
-          </div>
+        <div className="mb-6">
+          <input
+            type="text"
+            placeholder="Search users..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={`w-full px-4 py-2 rounded-md border ${
+              isDarkMode
+                ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-400'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+            } focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+          />
+        </div>
 
-          {/* Search Bar */}
-          <div className="mb-6">
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full px-4 py-2 rounded-md border ${
-                isDarkMode
-                  ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              } focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-            />
-          </div>
-
-          {/* Users Table */}
-          <div className={`rounded-lg shadow overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                  <tr>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
-                    }`}>Name</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
-                    }`}>Email</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
-                    }`}>Actions</th>
+        <div className={`rounded-lg shadow overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
+                <tr>
+                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
+                  }`}>Name</th>
+                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
+                  }`}>Email</th>
+                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'
+                  }`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                {users.filter(user => user.role !== 'admin').map((user) => (
+                  <tr key={user.id} className={isDarkMode ? 'bg-gray-800' : 'bg-white'}>
+                    <td className={`px-6 py-4 whitespace-nowrap ${
+                      isDarkMode ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {user.first_name} {user.middle_name} {user.last_name}
+                    </td>
+                    <td className={`px-6 py-4 whitespace-nowrap ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                    }`}>
+                      {user.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <button
+                        onClick={() => handleEditUser(user)}
+                        className={`mr-4 ${
+                          isDarkMode
+                            ? 'text-indigo-400 hover:text-indigo-300'
+                            : 'text-indigo-700 bg-indigo-100 hover:text-indigo-700' // Adjusted for light mode
+                        }`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id)}
+                        className={
+                          isDarkMode
+                            ? 'text-red-400 hover:text-red-300'
+                            : 'text-red-500 bg-red-100 hover:text-red-700' // Adjusted for light mode
+                        }
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {users.filter(user => user.role !== 'admin').map((user) => (
-                    <tr key={user.id} className={isDarkMode ? 'bg-gray-800' : 'bg-white'}>
-                      <td className={`px-6 py-4 whitespace-nowrap ${
-                        isDarkMode ? 'text-white' : 'text-gray-900'
-                      }`}>
-                        {user.first_name} {user.middle_name} {user.last_name}
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${
-                        isDarkMode ? 'text-gray-300' : 'text-gray-500'
-                      }`}>
-                        {user.email}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleEditUser(user)}
-                          className={`mr-4 ${
-                            isDarkMode
-                              ? 'text-indigo-400 hover:text-indigo-300'
-                              : 'text-indigo-700 bg-indigo-100 hover:text-indigo-700' // Adjusted for light mode
-                          }`}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(user.id)}
-                          className={
-                            isDarkMode
-                              ? 'text-red-400 hover:text-red-300'
-                              : 'text-red-500 bg-red-100 hover:text-red-700' // Adjusted for light mode
-                          }
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className={`rounded-lg shadow-xl max-w-md w-full ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
-            <h2 className={`text-xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              {currentUser ? 'Edit User' : 'Add New User'}
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  First Name
-                </label>
-                <input
-                  type="text"
-                  name="first_name"
-                  value={formData.first_name}
-                  onChange={handleChange}
-                  className={`mt-1 block w-full rounded-md border ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:ring-indigo-500 focus:border-indigo-500`}
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Middle Name
-                </label>
-                <input
-                  type="text"
-                  name="middle_name"
-                  value={formData.middle_name}
-                  onChange={handleChange}
-                  className={`mt-1 block w-full rounded-md border ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:ring-indigo-500 focus:border-indigo-500`}
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  name="last_name"
-                  value={formData.last_name}
-                  onChange={handleChange}
-                  className={`mt-1 block w-full rounded-md border ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:ring-indigo-500 focus:border-indigo-500`}
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Email
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={!!currentUser}
-                  className={`mt-1 block w-full rounded-md border ${
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:ring-indigo-500 focus:border-indigo-500`}
-                />
-              </div>
-              {!currentUser && (
+        {showModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+            <div className={`rounded-lg shadow-xl max-w-md w-full ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
+              <h2 className={`text-xl font-bold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                {currentUser ? 'Edit User' : 'Add New User'}
+              </h2>
+              <div className="space-y-4">
                 <div>
                   <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Password
+                    First Name
                   </label>
                   <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
+                    type="text"
+                    name="first_name"
+                    value={formData.first_name}
                     onChange={handleChange}
                     className={`mt-1 block w-full rounded-md border ${
                       isDarkMode
@@ -504,52 +373,119 @@ const UserManagement = () => {
                     } focus:ring-indigo-500 focus:border-indigo-500`}
                   />
                 </div>
-              )}
-              <div>
-                <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Role
-                </label>
-                <select
-                  name="role"
-                  value={formData.role}
-                  onChange={handleChange}
-                  className={`mt-1 block w-full rounded-md border ${
+                <div>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Middle Name
+                  </label>
+                  <input
+                    type="text"
+                    name="middle_name"
+                    value={formData.middle_name}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    } focus:ring-indigo-500 focus:border-indigo-500`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={formData.last_name}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    } focus:ring-indigo-500 focus:border-indigo-500`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={!!currentUser}
+                    className={`mt-1 block w-full rounded-md border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    } focus:ring-indigo-500 focus:border-indigo-500`}
+                  />
+                </div>
+                {!currentUser && (
+                  <div>
+                    <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      className={`mt-1 block w-full rounded-md border ${
+                        isDarkMode
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      } focus:ring-indigo-500 focus:border-indigo-500`}
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Role
+                  </label>
+                  <select
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-900'
+                    } focus:ring-indigo-500 focus:border-indigo-500`}
+                  >
+                    <option value="farmer">Farmer</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:ring-indigo-500 focus:border-indigo-500`}
+                      ? 'text-gray-300 bg-gray-700 hover:bg-gray-600 focus:ring-gray-500'
+                      : 'text-gray-700 bg-gray-100 hover:bg-gray-200 focus:ring-gray-500'
+                  }`}
                 >
-                  <option value="farmer">Farmer</option>
-                  <option value="admin">Admin</option>
-                </select>
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    isDarkMode
+                      ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                      : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+                  }`}
+                >
+                  Save
+                </button>
               </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                  isDarkMode
-                    ? 'text-gray-300 bg-gray-700 hover:bg-gray-600 focus:ring-gray-500'
-                    : 'text-gray-700 bg-gray-100 hover:bg-gray-200 focus:ring-gray-500'
-                }`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                  isDarkMode
-                    ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                    : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                }`}
-              >
-                Save
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </Layout>
   );
 };
 

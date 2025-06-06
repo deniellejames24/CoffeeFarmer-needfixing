@@ -16,7 +16,9 @@ import CoffeeGrader from "./pages/CoffeeGrader";
 import LandDeclaration from "./pages/LandDeclaration";
 import HarvestReporting from "./pages/HarvestReporting";
 import FarmerReports from "./pages/FarmerReports";
+import LandingPage from "./pages/LandingPage";
 import { ThemeProvider } from './lib/ThemeContext';
+import './styles/landing.css';
 
 function App() {
   return (
@@ -24,6 +26,8 @@ function App() {
       <AuthProvider>
         <Router>
           <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -120,8 +124,8 @@ function App() {
               }
             />
 
-            {/* Default Route: Redirects to /dashboard, which then handles role-based redirection */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {/* Redirect unknown routes to landing page */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
       </AuthProvider>
