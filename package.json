@@ -2,7 +2,7 @@
   "name": "coffeefarmer",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://izza3000.github.io/CoffeeFarmer",
+  "homepage": "https://izza3000.github.io/CoffeeFarmer/",
   "type": "module",
   "scripts": {
     "dev": "vite",
