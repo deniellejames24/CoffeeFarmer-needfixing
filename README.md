@@ -2,12 +2,12 @@
 
 
 # ADD
-admin side- financial management- add fertilizers used etc
-reco for fertilizers
-admin can track every session or activity of farmers
-system can export summary of reports for both admin(all farmer and individual farmer) and farmer
-interactive charts
-make the farmer activity status functional
+- admin side- financial management- add fertilizers used etc
+- reco for fertilizers
+- admin can track every session or activity of farmers
+- system can export summary of reports for both admin(all farmer and individual farmer) and farmer
+- interactive charts
+- make the farmer activity status functional
 
 
 
