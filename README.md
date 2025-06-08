@@ -1,7 +1,7 @@
 # CoffeeFarmer
 
 
-#ADD
+# ADD
 admin side- financial management- add fertilizers used etc
 reco for fertilizers
 admin can track every session or activity of farmers
