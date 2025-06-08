@@ -17,6 +17,8 @@ const FarmerDashboard = () => {
   const { isDarkMode, toggleTheme } = useTheme();
   const [user, setUser] = useState(null);
   const [farmerDetails, setFarmerDetails] = useState(null); // Will be null if no details declared
+  const [plants, setPlants] = useState([]); // Add plants state
+  const [statuses, setStatuses] = useState({}); // Add statuses state
   const [totalFarmerPlants, setTotalFarmerPlants] = useState(0); // Sum of trees
   const [totalRawHarvests, setTotalRawHarvests] = useState(0); // Sum of raw quantity
   const [totalDryHarvests, setTotalDryHarvests] = useState(0); // Sum of dry quantity
@@ -42,7 +44,7 @@ const FarmerDashboard = () => {
   const [gradePieChartData, setGradePieChartData] = useState({
     labels: ['Premium', 'Fine', 'Commercial'],
     datasets: [{
-      label: 'Graded Yield (kg)',
+      label: 'Grade Distribution (%)',
       data: [0, 0, 0],
       backgroundColor: [
         'rgba(255, 99, 132, 0.6)',
@@ -58,6 +60,39 @@ const FarmerDashboard = () => {
     }]
   });
 
+  // Add new state for legend data
+  const [legendData, setLegendData] = useState([
+    { label: 'Premium', percentage: 0, value: 0, color: 'rgba(255, 99, 132, 0.6)' },
+    { label: 'Fine', percentage: 0, value: 0, color: 'rgba(54, 162, 235, 0.6)' },
+    { label: 'Commercial', percentage: 0, value: 0, color: 'rgba(255, 206, 86, 0.6)' }
+  ]);
+
+  // Add getStatusColor function
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'healthy':
+        return isDarkMode 
+          ? 'bg-green-900 text-green-200' 
+          : 'bg-green-100 text-green-800';
+      case 'diseased':
+        return isDarkMode 
+          ? 'bg-red-900 text-red-200' 
+          : 'bg-red-100 text-red-800';
+      case 'pest-affected':
+        return isDarkMode 
+          ? 'bg-yellow-900 text-yellow-200' 
+          : 'bg-yellow-100 text-yellow-800';
+      default:
+        return isDarkMode 
+          ? 'bg-gray-700 text-gray-200' 
+          : 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Add handlePlantClick function
+  const handlePlantClick = (plant) => {
+    navigate(`/plant-status/${plant.plant_id}`);
+  };
 
   useEffect(() => {
     const fetchFarmerDashboardData = async () => {
@@ -115,17 +150,34 @@ const FarmerDashboard = () => {
         // If farmerData is found, set it.
         setFarmerDetails(farmerData);
 
-        // Fetch Total Plants for this farmer (sum of 'number_of_tree_planted')
+        // Fetch plant data
         const { data: plantData, error: plantsError } = await supabase
           .from("plant_data")
-          .select("number_of_tree_planted") // Select the quantity column
-          .eq("farmer_id", authUser.id); // IMPORTANT: Filter by farmer's ID
+          .select("*")
+          .eq("farmer_id", authUser.id);
         if (plantsError) throw plantsError;
+
+        setPlants(plantData);
+
+        // Fetch latest status for each plant
+        const newStatuses = {};
+        for (const plant of plantData) {
+          const { data: statusData, error: statusError } = await supabase
+            .from('plant_status')
+            .select('*')
+            .eq('plant_id', plant.plant_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          if (!statusError && statusData) {
+            newStatuses[plant.plant_id] = statusData;
+          }
+        }
+        setStatuses(newStatuses);
 
         // Sum up the number_of_tree_planted
         const sumTotalTrees = plantData.reduce((sum, plant) => sum + (plant.number_of_tree_planted || 0), 0);
         setTotalFarmerPlants(sumTotalTrees);
-
 
         // Fetch ALL relevant Harvest data for this farmer
         const { data: harvestData, error: harvestsError } = await supabase
@@ -141,16 +193,27 @@ const FarmerDashboard = () => {
         const sumDryQuantity = harvestData.reduce((sum, harvest) => sum + (harvest.coffee_dry_quantity || 0), 0);
         setTotalDryHarvests(sumDryQuantity);
 
-        // Calculate total Kg for each grade (assuming grades are percentages of raw quantity)
-        // Ensure raw_quantity is used for grade calculation if grades are percentages
-        const sumPremiumKg = harvestData.reduce((sum, harvest) => sum + ((harvest.coffee_premium_grade / 100) * (harvest.coffee_raw_quantity || 0) || 0), 0);
-        setTotalPremiumKg(sumPremiumKg);
+        // Calculate total Kg for each grade (using dry quantity as base)
+        const sumPremiumKg = harvestData.reduce((sum, harvest) => {
+          const dryQuantity = harvest.coffee_dry_quantity || 0;
+          const premiumPercentage = harvest.coffee_premium_grade || 0;
+          return sum + (dryQuantity * (premiumPercentage / 100));
+        }, 0);
+        setTotalPremiumKg(Math.round(sumPremiumKg * 100) / 100);
 
-        const sumFineKg = harvestData.reduce((sum, harvest) => sum + ((harvest.coffee_fine_grade / 100) * (harvest.coffee_raw_quantity || 0) || 0), 0);
-        setTotalFineKg(sumFineKg);
+        const sumFineKg = harvestData.reduce((sum, harvest) => {
+          const dryQuantity = harvest.coffee_dry_quantity || 0;
+          const finePercentage = harvest.coffee_fine_grade || 0;
+          return sum + (dryQuantity * (finePercentage / 100));
+        }, 0);
+        setTotalFineKg(Math.round(sumFineKg * 100) / 100);
 
-        const sumCommercialKg = harvestData.reduce((sum, harvest) => sum + ((harvest.coffee_commercial_grade / 100) * (harvest.coffee_raw_quantity || 0) || 0), 0);
-        setTotalCommercialKg(sumCommercialKg);
+        const sumCommercialKg = harvestData.reduce((sum, harvest) => {
+          const dryQuantity = harvest.coffee_dry_quantity || 0;
+          const commercialPercentage = harvest.coffee_commercial_grade || 0;
+          return sum + (dryQuantity * (commercialPercentage / 100));
+        }, 0);
+        setTotalCommercialKg(Math.round(sumCommercialKg * 100) / 100);
 
         // Update Chart Data
         setHarvestBarChartData({
@@ -164,16 +227,28 @@ const FarmerDashboard = () => {
           }]
         });
 
+        // Calculate total graded yield and percentages for pie chart
         const totalGradedYield = sumPremiumKg + sumFineKg + sumCommercialKg;
+        
+        // Calculate percentages
+        const premiumPercentage = totalGradedYield > 0 ? (sumPremiumKg / totalGradedYield) * 100 : 0;
+        const finePercentage = totalGradedYield > 0 ? (sumFineKg / totalGradedYield) * 100 : 0;
+        const commercialPercentage = totalGradedYield > 0 ? (sumCommercialKg / totalGradedYield) * 100 : 0;
+
+        // Update Pie Chart with percentage distribution
         setGradePieChartData({
           labels: ['Premium', 'Fine', 'Commercial'],
           datasets: [{
-            label: 'Graded Yield (kg)',
-            data: [sumPremiumKg, sumFineKg, sumCommercialKg],
+            label: 'Grade Distribution (%)',
+            data: [
+              Math.round(premiumPercentage * 10) / 10,    // Round to 1 decimal place
+              Math.round(finePercentage * 10) / 10,
+              Math.round(commercialPercentage * 10) / 10
+            ],
             backgroundColor: [
-              'rgba(255, 99, 132, 0.6)', // Premium
-              'rgba(54, 162, 235, 0.6)', // Fine
-              'rgba(255, 206, 86, 0.6)', // Commercial
+              'rgba(255, 99, 132, 0.6)', // Premium - Pink/Red
+              'rgba(54, 162, 235, 0.6)', // Fine - Blue
+              'rgba(255, 206, 86, 0.6)', // Commercial - Yellow
             ],
             borderColor: [
               'rgba(255, 99, 132, 1)',
@@ -184,6 +259,27 @@ const FarmerDashboard = () => {
           }]
         });
 
+        // Update the legend data when updating pie chart
+        setLegendData([
+          { 
+            label: 'Premium', 
+            percentage: Math.round(premiumPercentage * 10) / 10,
+            value: Math.round(sumPremiumKg * 100) / 100,
+            color: 'rgba(255, 99, 132, 0.6)'
+          },
+          { 
+            label: 'Fine', 
+            percentage: Math.round(finePercentage * 10) / 10,
+            value: Math.round(sumFineKg * 100) / 100,
+            color: 'rgba(54, 162, 235, 0.6)'
+          },
+          { 
+            label: 'Commercial', 
+            percentage: Math.round(commercialPercentage * 10) / 10,
+            value: Math.round(sumCommercialKg * 100) / 100,
+            color: 'rgba(255, 206, 86, 0.6)'
+          }
+        ]);
 
         // Fetch Recent Activities for this farmer
         // Get recent plant declarations
@@ -324,6 +420,27 @@ const FarmerDashboard = () => {
     },
   };
 
+  // Add this custom legend component
+  const CustomLegend = ({ data }) => (
+    <div className="flex flex-col gap-4 p-4">
+      {data.map((item, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <div 
+            className="w-4 h-4 rounded-full" 
+            style={{ backgroundColor: item.color }}
+          />
+          <div className="flex flex-col">
+            <span className="font-medium">{item.label}</span>
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              <span>{item.percentage}%</span>
+              <span className="mx-1">•</span>
+              <span>{item.value} kg</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -424,49 +541,150 @@ const FarmerDashboard = () => {
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Farmer Dashboard</h1>
+          <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
+            <h2 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Farmer Dashboard
+            </h2>
             {user && (
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Welcome back, {user.first_name} {user.last_name}
+              <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Welcome back, <span className="font-semibold">{user.first_name} {user.last_name}</span>
               </p>
             )}
+            <p className={`mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Monitor your farm's performance and activities
+            </p>
           </div>
 
-          {/* Stats Grid - Single Row */}
-          <div className="flex flex-row gap-6 mb-8">
-            <div className={`flex-1 p-6 rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Total Plants</h3>
-              <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{totalFarmerPlants}</p>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Total Plants</h3>
+                  <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{totalFarmerPlants}</p>
+                </div>
+                <div className={`p-3 rounded-full ${isDarkMode ? 'bg-indigo-900' : 'bg-indigo-100'}`}>
+                  <svg className={`w-6 h-6 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <div className={`flex-1 p-6 rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Raw Harvest (kg)</h3>
-              <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{totalRawHarvests}</p>
+
+            <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Raw Harvest</h3>
+                  <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>{totalRawHarvests} kg</p>
+                </div>
+                <div className={`p-3 rounded-full ${isDarkMode ? 'bg-green-900' : 'bg-green-100'}`}>
+                  <svg className={`w-6 h-6 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                  </svg>
+                </div>
+              </div>
             </div>
-            <div className={`flex-1 p-6 rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dry Harvest (kg)</h3>
-              <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{totalDryHarvests}</p>
+
+            <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dry Harvest</h3>
+                  <p className={`mt-2 text-3xl font-bold ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}>{totalDryHarvests} kg</p>
+                </div>
+                <div className={`p-3 rounded-full ${isDarkMode ? 'bg-amber-900' : 'bg-amber-100'}`}>
+                  <svg className={`w-6 h-6 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Charts Grid - Single Row */}
-          <div className="flex flex-row gap-6 mb-8">
-            <div className={`flex-1 p-6 rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
               <h3 className={`text-lg font-medium mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Harvest Distribution</h3>
               <div className="h-64">
-                <Bar data={harvestBarChartData} options={{ maintainAspectRatio: false }} />
+                <Bar data={harvestBarChartData} options={harvestBarChartOptions} />
               </div>
             </div>
-            <div className={`flex-1 p-6 rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className={`text-lg font-medium mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Grade Distribution</h3>
-              <div className="h-64">
-                <Pie data={gradePieChartData} options={{ maintainAspectRatio: false }} />
+
+            <div className="flex flex-col md:flex-row items-center justify-center gap-8 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <div className="w-full md:w-1/2 max-w-md">
+                <h3 className="text-lg font-semibold mb-4 text-center">Grade Distribution</h3>
+                <Pie data={gradePieChartData} options={gradePieChartOptions} />
               </div>
+              <div className="w-full md:w-1/2 max-w-md">
+                <CustomLegend data={legendData} />
+              </div>
+            </div>
+          </div>
+
+          {/* Your Current Plants Section */}
+          <div className={`mt-8 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+            <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Your Current Plants</h3>
+              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Click on a plant to view its status and manage it.
+              </p>
+            </div>
+            <div className="p-6">
+              {plants.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className={`mb-4 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Please declare plant first.
+                  </p>
+                  <button
+                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+                    onClick={() => navigate('/land-declaration')}
+                  >
+                    Declare Plant
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {plants.map((plant) => (
+                    <div
+                      key={plant.plant_id}
+                      className={`p-6 rounded-lg shadow-md ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} 
+                        hover:shadow-lg transition-all duration-200 cursor-pointer`}
+                      onClick={() => handlePlantClick(plant)}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {plant.coffee_variety}
+                          </h3>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Trees: {plant.number_of_tree_planted}
+                          </p>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            Planted: {new Date(plant.planting_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {statuses[plant.plant_id] && (
+                          <div className={`px-4 py-2 rounded-full text-sm font-medium
+                            ${getStatusColor(statuses[plant.plant_id].status)}`}>
+                            {statuses[plant.plant_id].status}
+                          </div>
+                        )}
+                        <div className={`ml-4 p-2 rounded-full ${
+                          isDarkMode ? 'bg-gray-600 text-indigo-400' : 'bg-gray-200 text-indigo-600'
+                        }`}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Recent Activities */}
-          <div className={`rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <div className={`mt-8 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
             <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Activities</h3>
             </div>
@@ -475,14 +693,15 @@ const FarmerDashboard = () => {
                 <div key={index} className="px-6 py-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{activity.activity}</p>
+                      <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{activity.activity}</p>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{activity.date}</p>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{activity.date}</span>
-                      <span className="px-2 py-1 text-xs font-medium text-green-800 bg-green-100 rounded-full">
-                        {activity.status}
-                      </span>
-                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium
+                      ${isDarkMode 
+                        ? 'bg-green-900 text-green-200' 
+                        : 'bg-green-100 text-green-800'}`}>
+                      {activity.status}
+                    </span>
                   </div>
                 </div>
               ))}

@@ -8,8 +8,10 @@ import FarmerDashboard from "./pages/FarmerDashboard";
 import UserManagement from "./pages/UserManagement";
 import UserProfile from "./pages/UserProfile";
 import PredictiveAnalytics from "./pages/PredictiveAnalytics";
+import SinglePlantAnalytics from "./pages/SinglePlantAnalytics";
 import DataEntry from "./pages/DataEntry";
 import DSSRecommendations from "./pages/DSSRecommendations";
+import FarmerRecommendations from "./pages/FarmerRecommendations";
 import { AuthProvider } from "./lib/AuthProvider"; // Keep AuthProvider
 import ProtectedRoute from "./lib/ProtectedRoute"; // Keep ProtectedRoute for other routes
 import CoffeeGrader from "./pages/CoffeeGrader";
@@ -17,8 +19,11 @@ import LandDeclaration from "./pages/LandDeclaration";
 import HarvestReporting from "./pages/HarvestReporting";
 import FarmerReports from "./pages/FarmerReports";
 import LandingPage from "./pages/LandingPage";
+import AdminAnalytics from "./pages/AdminAnalytics";
 import { ThemeProvider } from './lib/ThemeContext';
 import './styles/landing.css';
+import PlantStatus from "./pages/PlantStatus";
+import FarmerProfile from "./pages/FarmerProfile";
 
 function App() {
   return (
@@ -60,6 +65,15 @@ function App() {
             />
 
             <Route
+              path="/admin-analytics"
+              element={
+                <ProtectedRoute requiredRoles={['admin']}>
+                  <AdminAnalytics />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/farmer-reports"
               element={
                 <ProtectedRoute requiredRoles={['admin']}>
@@ -94,7 +108,7 @@ function App() {
             <Route
               path="/dss-recommendations"
               element={
-                <ProtectedRoute requiredRoles={['farmer', 'admin']}>
+                <ProtectedRoute requiredRoles={['farmer']}>
                   <DSSRecommendations />
                 </ProtectedRoute>
               }
@@ -120,6 +134,40 @@ function App() {
               element={
                 <ProtectedRoute requiredRoles={['farmer', 'admin']}> {/* Changed to allow admin too */}
                   <LandDeclaration />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/plant-status/:plantId"
+              element={
+                <ProtectedRoute requiredRoles={['farmer', 'admin']}>
+                  <PlantStatus />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/single-plant-analytics/:plantId"
+              element={
+                <ProtectedRoute requiredRoles={['farmer', 'admin']}>
+                  <SinglePlantAnalytics />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/farmer-recommendations"
+              element={
+                <ProtectedRoute requiredRoles={['admin']}>
+                  <FarmerRecommendations />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/farmer-profile/:farmerId"
+              element={
+                <ProtectedRoute requiredRoles={['admin']}>
+                  <FarmerProfile />
                 </ProtectedRoute>
               }
             />

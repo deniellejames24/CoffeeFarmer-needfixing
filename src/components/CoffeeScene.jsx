@@ -8,7 +8,7 @@ import * as THREE from 'three';
 
 function CoffeeBean({ position, rotation }) {
   const mesh = useRef();
-  const fbx = useLoader(FBXLoader, '/CoffeeFarmer/assets/models/coffee-bean/source/Coffee Bean.fbx');
+  const fbx = useLoader(FBXLoader, '/assets/models/coffee-bean/source/Coffee Bean.fbx');
   
   useEffect(() => {
     if (fbx) {
@@ -41,8 +41,8 @@ function CoffeeBean({ position, rotation }) {
 }
 
 function CoffeeTree({ position = [-19, -5, 3], scale = 10 }) {
-  const materials = useLoader(MTLLoader, '/CoffeeFarmer/assets/models/a-coffee-tree/source/coffee-step00002/coffee-step00002.mtl');
-  const obj = useLoader(OBJLoader, '/CoffeeFarmer/assets/models/a-coffee-tree/source/coffee-step00002/coffee-step00002.obj', (loader) => {
+  const materials = useLoader(MTLLoader, '/assets/models/a-coffee-tree/source/coffee-step00002/coffee-step00002.mtl');
+  const obj = useLoader(OBJLoader, '/assets/models/a-coffee-tree/source/coffee-step00002/coffee-step00002.obj', (loader) => {
     materials.preload();
     loader.setMaterials(materials);
   });

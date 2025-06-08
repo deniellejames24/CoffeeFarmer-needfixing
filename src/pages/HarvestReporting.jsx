@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useTheme } from "../lib/ThemeContext";
@@ -10,6 +10,30 @@ const HarvestReporting = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDarkMode, toggleTheme } = useTheme();
+  const initialLoadDone = useRef(false);
+
+  // Add global styles for dark mode select options
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .dark-mode select option {
+        background-color: #374151 !important;
+        color: white !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  // Add dark mode class to body when dark mode is active
+  React.useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [isDarkMode]);
+
   const [user, setUser] = useState(null);
   const [farmerDetails, setFarmerDetails] = useState(null); // Will hold the current farmer's details
   const [plantDataList, setPlantDataList] = useState([]); // To populate the plant_id dropdown
@@ -27,6 +51,10 @@ const HarvestReporting = () => {
   });
   const [showHarvestForm, setShowHarvestForm] = useState(false);
   const [isEditingHarvest, setIsEditingHarvest] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Add new state for maximum dry quantity
+  const [maxDryQuantity, setMaxDryQuantity] = useState(0);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -53,14 +81,15 @@ const HarvestReporting = () => {
         .single();
 
       if (farmerError && farmerError.code === 'PGRST116') { // No rows found
+        if (!initialLoadDone.current) {
         toast.info("Please declare your farm details first in 'Land & Plant Declaration'.");
+        }
         setFarmerDetails(null);
         setPlantDataList([]); // Clear plant list if no farmer details
         setHarvestDataList([]); // Clear harvest list if no farmer details
         return;
       } else if (farmerData) {
         setFarmerDetails(farmerData);
-        toast.info("Loading harvest data...");
 
         // Fetch plant data for this farmer (to populate the dropdown)
         const { data: plants, error: plantsError } = await supabase
@@ -72,7 +101,9 @@ const HarvestReporting = () => {
           setPlantDataList(plants || []);
         } else {
           console.error("Error fetching plant data for dropdown:", plantsError);
-          toast.error("Error loading plant data for selection.");
+          if (!initialLoadDone.current) {
+            toast.error("Error loading data. Please try refreshing the page.");
+          }
         }
 
         // Fetch harvest data for this farmer
@@ -84,17 +115,30 @@ const HarvestReporting = () => {
 
         if (!harvestsError) {
           setHarvestDataList(harvests || []);
-          if (harvests.length === 0) {
-            toast.info("No harvest data recorded yet.");
+          if (!initialLoadDone.current) {
+            const plantCount = plants?.length || 0;
+            const harvestCount = harvests?.length || 0;
+            if (plantCount === 0) {
+              toast.info("No plant data found. Please add plants in 'Land & Plant Declaration'.");
+            } else if (harvestCount === 0) {
+              toast.info("No harvest data recorded yet. You can start adding harvest records.");
+            } else {
+              toast.success(`Loaded ${plantCount} plant record${plantCount > 1 ? 's' : ''} and ${harvestCount} harvest record${harvestCount > 1 ? 's' : ''}.`);
+            }
           }
         } else {
           console.error("Error fetching harvest data:", harvestsError);
-          toast.error(`Error fetching harvest data: ${harvestsError.message}`);
+          if (!initialLoadDone.current) {
+            toast.error("Error loading data. Please try refreshing the page.");
+          }
         }
       } else if (farmerError) {
         console.error("Error fetching farmer details:", farmerError);
-        toast.error("Error fetching farmer details. Cannot load harvest data.");
+        if (!initialLoadDone.current) {
+          toast.error("Error loading data. Please try refreshing the page.");
+        }
       }
+      initialLoadDone.current = true;
     };
     fetchUserAndData();
   }, [navigate]);
@@ -106,11 +150,47 @@ const HarvestReporting = () => {
 
   const handleHarvestInputChange = (e) => {
     const { name, value } = e.target;
-    setHarvestInputForm((prev) => ({ ...prev, [name]: value }));
+    
+    // Update the form state
+    setHarvestInputForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    // Calculate max dry quantity when raw quantity changes (approximately 20% weight loss during drying)
+    if (name === 'coffee_raw_quantity') {
+      const rawQuantity = parseFloat(value) || 0;
+      const maxDry = Math.round((rawQuantity * 1) * 100) / 100; // Round to 2 decimal places
+      setMaxDryQuantity(maxDry);
+    }
+
+    // Calculate total dry quantity from grades
+    if (['coffee_premium_grade', 'coffee_fine_grade', 'coffee_commercial_grade'].includes(name)) {
+      const premiumGrade = parseFloat(name === 'coffee_premium_grade' ? value : harvestInputForm.coffee_premium_grade) || 0;
+      const fineGrade = parseFloat(name === 'coffee_fine_grade' ? value : harvestInputForm.coffee_fine_grade) || 0;
+      const commercialGrade = parseFloat(name === 'coffee_commercial_grade' ? value : harvestInputForm.coffee_commercial_grade) || 0;
+      
+      const calculatedDryQuantity = premiumGrade + fineGrade + commercialGrade;
+      
+      // Update the dry quantity
+      setHarvestInputForm((prev) => ({
+        ...prev,
+        coffee_dry_quantity: calculatedDryQuantity.toFixed(2),
+      }));
+    }
   };
 
   const saveHarvestData = async (e) => {
     e.preventDefault();
+
+    // Validate total dry quantity against max dry quantity
+    const currentDryQuantity = parseFloat(harvestInputForm.coffee_dry_quantity);
+    const currentRawQuantity = parseFloat(harvestInputForm.coffee_raw_quantity);
+    
+    if (currentDryQuantity > maxDryQuantity) {
+      toast.error(`Total dry quantity (${currentDryQuantity}kg) cannot exceed ${maxDryQuantity}(kg of raw quantity ${currentRawQuantity}kg)`);
+      return;
+    }
 
     if (!farmerDetails || !farmerDetails.id) {
       toast.error("Farmer details not loaded. Cannot save harvest data.");
@@ -119,7 +199,6 @@ const HarvestReporting = () => {
 
     if (!harvestInputForm.harvest_date || !harvestInputForm.plant_id ||
         harvestInputForm.coffee_raw_quantity === "" ||
-        harvestInputForm.coffee_dry_quantity === "" ||
         harvestInputForm.coffee_premium_grade === "" ||
         harvestInputForm.coffee_fine_grade === "" ||
         harvestInputForm.coffee_commercial_grade === ""
@@ -134,34 +213,33 @@ const HarvestReporting = () => {
       return;
     }
 
-    const parsedDryQuantity = parseFloat(harvestInputForm.coffee_dry_quantity);
-    if (isNaN(parsedDryQuantity) || parsedDryQuantity < 0) {
-      toast.warning("Dry coffee quantity must be a non-negative number.");
-      return;
-    }
-
     const parsedPremiumGrade = parseFloat(harvestInputForm.coffee_premium_grade);
     if (isNaN(parsedPremiumGrade) || parsedPremiumGrade < 0) {
       toast.warning("Premium grade must be a non-negative number.");
       return;
     }
+
     const parsedFineGrade = parseFloat(harvestInputForm.coffee_fine_grade);
     if (isNaN(parsedFineGrade) || parsedFineGrade < 0) {
       toast.warning("Fine grade must be a non-negative number.");
       return;
     }
+
     const parsedCommercialGrade = parseFloat(harvestInputForm.coffee_commercial_grade);
     if (isNaN(parsedCommercialGrade) || parsedCommercialGrade < 0) {
       toast.warning("Commercial grade must be a non-negative number.");
       return;
     }
 
+    // Calculate total dry quantity
+    const totalDryQuantity = parsedPremiumGrade + parsedFineGrade + parsedCommercialGrade;
+
     try {
       const harvestDataToSave = {
         plant_id: harvestInputForm.plant_id,
         harvest_date: harvestInputForm.harvest_date,
         coffee_raw_quantity: parsedRawQuantity,
-        coffee_dry_quantity: parsedDryQuantity,
+        coffee_dry_quantity: totalDryQuantity,
         coffee_premium_grade: parsedPremiumGrade,
         coffee_fine_grade: parsedFineGrade,
         coffee_commercial_grade: parsedCommercialGrade,
@@ -201,10 +279,16 @@ const HarvestReporting = () => {
       if (fetchError) throw fetchError;
       setHarvestDataList(updatedHarvestList || []);
 
-      // Reset form and hide it
+      // Close modal and reset form after successful save
+      if (isEditingHarvest) {
+        setIsModalOpen(false);
+        setIsEditingHarvest(false);
+      }
+      
+      // Reset form
       setHarvestInputForm({
         harvest_id: null,
-        farmer_id: farmerDetails.id, // Keep farmer_id for consistency
+        farmer_id: farmerDetails?.id,
         plant_id: "",
         harvest_date: "",
         coffee_raw_quantity: "",
@@ -213,8 +297,6 @@ const HarvestReporting = () => {
         coffee_fine_grade: "",
         coffee_commercial_grade: "",
       });
-      setShowHarvestForm(false);
-      setIsEditingHarvest(false);
 
     } catch (error) {
       console.error("Error saving harvest data:", error);
@@ -234,8 +316,8 @@ const HarvestReporting = () => {
       coffee_fine_grade: harvest.coffee_fine_grade,
       coffee_commercial_grade: harvest.coffee_commercial_grade,
     });
-    setShowHarvestForm(true);
     setIsEditingHarvest(true);
+    setIsModalOpen(true);
   };
 
   const deleteHarvest = async (harvestId) => {
@@ -275,7 +357,9 @@ const HarvestReporting = () => {
     }
   };
 
-  const cancelHarvestEdit = () => {
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setIsEditingHarvest(false);
     setHarvestInputForm({
       harvest_id: null,
       farmer_id: farmerDetails?.id,
@@ -287,8 +371,13 @@ const HarvestReporting = () => {
       coffee_fine_grade: "",
       coffee_commercial_grade: "",
     });
-    setShowHarvestForm(false);
-    setIsEditingHarvest(false);
+  };
+
+  const handleOutsideClick = (e) => {
+    // If the click is on the overlay (data-input-section) but not on the modal content
+    if (e.target.classList.contains('data-input-section')) {
+      cancelHarvestEdit();
+    }
   };
 
   const adminLinks = [
@@ -313,262 +402,553 @@ const HarvestReporting = () => {
 
   const navLinks = user?.role === "admin" ? adminLinks : userLinks;
 
+  // Add helper function to validate grade input
+  const validateGradeInput = (value, name) => {
+    const premiumGrade = parseFloat(name === 'coffee_premium_grade' ? value : harvestInputForm.coffee_premium_grade) || 0;
+    const fineGrade = parseFloat(name === 'coffee_fine_grade' ? value : harvestInputForm.coffee_fine_grade) || 0;
+    const commercialGrade = parseFloat(name === 'coffee_commercial_grade' ? value : harvestInputForm.coffee_commercial_grade) || 0;
+    
+    return (premiumGrade + fineGrade + commercialGrade) <= maxDryQuantity;
+  };
+
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Harvest Reporting
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {harvestDataList.map((harvest) => (
-            <div key={harvest.harvest_id} className={`p-4 rounded-lg shadow-sm ${isDarkMode ? 'bg-gray-800' : 'bg-white'} border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className="flex justify-between items-start mb-3">
-                <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Harvest #{harvest.harvest_id}
-                </h3>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => editHarvest(harvest)}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      isDarkMode
-                        ? 'text-indigo-400 hover:text-indigo-300 hover:bg-gray-700'
-                        : 'text-indigo-600 hover:text-indigo-500 hover:bg-indigo-50'
-                    }`}
-                    title="Edit Harvest"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => deleteHarvest(harvest.harvest_id)}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      isDarkMode
-                        ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                        : 'text-red-600 hover:text-red-500 hover:bg-red-50'
-                    }`}
-                    title="Delete Harvest"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <svg className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {new Date(harvest.harvest_date).toLocaleDateString()}
-                  </p>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <svg className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                  </svg>
-                  <p className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {plantDataList.find(p => p.plant_id === harvest.plant_id)?.coffee_variety || 'Unknown Variety'}
-                  </p>
-                </div>
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Header */}
+          <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
+            <h2 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Harvest Reporting
+            </h2>
+            <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Record and manage your coffee harvest data
+            </p>
+          </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-                  <div>
-                    <p className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Raw Coffee</p>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {harvest.coffee_raw_quantity} kg
-                    </p>
-                  </div>
-                  <div>
-                    <p className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dry Coffee</p>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {harvest.coffee_dry_quantity} kg
-                    </p>
-                  </div>
-                  <div>
-                    <p className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Premium Grade</p>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {harvest.coffee_premium_grade}
-                    </p>
-                  </div>
-                  <div>
-                    <p className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Fine Grade</p>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {harvest.coffee_fine_grade}
-                    </p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className={`text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Commercial Grade</p>
-                    <p className={`text-sm font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {harvest.coffee_commercial_grade}
-                    </p>
-                  </div>
-                </div>
+          {/* Harvest Form Section */}
+          <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Record New Harvest</h3>
+              <div className={`p-3 rounded-full ${isDarkMode ? 'bg-green-900' : 'bg-green-100'}`}>
+                <svg className={`w-6 h-6 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
               </div>
             </div>
-          ))}
-        </div>
 
-        {farmerDetails && plantDataList.length === 0 && !showHarvestForm && (
-          <div className="info-card">
-            <p>You need to declare at least one plant entry in "Land & Plant Declaration" before adding harvest data.</p>
-            <button onClick={() => navigate("/land-declaration")} className="add-data-btn">Add Plant Data</button>
-          </div>
-        )}
+            <form onSubmit={saveHarvestData} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Plant
+                  </label>
+                  <select
+                    name="plant_id"
+                    value={harvestInputForm.plant_id}
+                    onChange={handleHarvestInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  >
+                    <option value="">Select a plant</option>
+                    {plantDataList.map((plant) => (
+                      <option key={plant.plant_id} value={plant.plant_id}>
+                        {plant.coffee_variety} (Planted: {new Date(plant.planting_date).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-        {farmerDetails && harvestDataList.length === 0 && !showHarvestForm && (
-          <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            <svg className="mx-auto h-12 w-12 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="text-sm">No harvest data recorded for this farm yet.</p>
-            <p className="text-sm mt-1">Click "Add New Harvest Data" to get started.</p>
-          </div>
-        )}
-
-        {farmerDetails && plantDataList.length > 0 && !showHarvestForm && (
-          <button
-            onClick={() => {
-              setShowHarvestForm(true);
-              setIsEditingHarvest(false);
-              setHarvestInputForm({ // Reset form for new entry
-                harvest_id: null,
-                farmer_id: farmerDetails.id,
-                plant_id: "", // Ensure this is empty for new selection
-                harvest_date: "",
-                coffee_raw_quantity: "",
-                coffee_dry_quantity: "",
-                coffee_premium_grade: "",
-                coffee_fine_grade: "",
-                coffee_commercial_grade: "",
-              });
-            }}
-            className="add-data-btn"
-            style={{ marginTop: '20px' }}
-          >
-            Add New Harvest Data
-          </button>
-        )}
-
-        {showHarvestForm && farmerDetails && (
-          <div className="data-input-section">
-            <h3>{isEditingHarvest ? "Edit Harvest Data" : "Add New Harvest Data"}</h3>
-            <form onSubmit={saveHarvestData} className="data-form">
-              <div className="form-group">
-                <label htmlFor="harvest_date">Harvest Date:</label>
-                <input
-                  type="date"
-                  id="harvest_date"
-                  name="harvest_date"
-                  value={harvestInputForm.harvest_date || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Harvest Date
+                  </label>
+                  <input
+                    type="date"
+                    name="harvest_date"
+                    value={harvestInputForm.harvest_date}
+                    onChange={handleHarvestInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor="plant_id">Associated Plant:</label>
-                <select
-                  id="plant_id"
-                  name="plant_id"
-                  value={harvestInputForm.plant_id || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                  disabled={plantDataList.length === 0} // Disable if no plants are available
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Raw Coffee Quantity (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="coffee_raw_quantity"
+                    value={harvestInputForm.coffee_raw_quantity}
+                    onChange={handleHarvestInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                  {harvestInputForm.coffee_raw_quantity > 0 && (
+                    <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Maximum dry quantity: {maxDryQuantity}kg (of raw quantity)
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Total Dry Coffee Quantity (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="coffee_dry_quantity"
+                    value={harvestInputForm.coffee_dry_quantity}
+                    readOnly
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-600 border-gray-600 text-white'
+                        : 'bg-gray-100 border-gray-300 text-gray-900'
+                    } cursor-not-allowed`}
+                  />
+                  <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Auto-calculated from grades
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Quantity of Premium Grade (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="coffee_premium_grade"
+                    value={harvestInputForm.coffee_premium_grade}
+                    onChange={(e) => {
+                      handleHarvestInputChange(e);
+                      if (!validateGradeInput(e.target.value, 'coffee_premium_grade')) {
+                        toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Quantity of Fine Grade (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="coffee_fine_grade"
+                    value={harvestInputForm.coffee_fine_grade}
+                    onChange={(e) => {
+                      handleHarvestInputChange(e);
+                      if (!validateGradeInput(e.target.value, 'coffee_fine_grade')) {
+                        toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Quantity of Commercial Grade (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="coffee_commercial_grade"
+                    value={harvestInputForm.coffee_commercial_grade}
+                    onChange={(e) => {
+                      handleHarvestInputChange(e);
+                      if (!validateGradeInput(e.target.value, 'coffee_commercial_grade')) {
+                        toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHarvestForm(false);
+                    setIsEditingHarvest(false);
+                    setHarvestInputForm({
+                      harvest_id: null,
+                      farmer_id: farmerDetails?.id,
+                      plant_id: "",
+                      harvest_date: "",
+                      coffee_raw_quantity: "",
+                      coffee_dry_quantity: "",
+                      coffee_premium_grade: "",
+                      coffee_fine_grade: "",
+                      coffee_commercial_grade: "",
+                    });
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                      : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  }`}
                 >
-                  <option value="">-- Select a Plant --</option>
-                  {plantDataList.map((plant) => (
-                    <option key={plant.plant_id} value={plant.plant_id}>
-                      Plant ID: {plant.plant_id} - Variety: {plant.coffee_variety} (Planted: {new Date(plant.planting_date).toLocaleDateString()})
-                    </option>
-                  ))}
-                </select>
-                {plantDataList.length === 0 && (
-                    <p className="form-helper-text">No plants available. Please add plants in "Land & Plant Declaration" first.</p>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="coffee_raw_quantity">Raw Coffee Quantity (kg):</label>
-                <input
-                  type="number"
-                  step="0.01" // Allow decimal for quantity
-                  id="coffee_raw_quantity"
-                  name="coffee_raw_quantity"
-                  value={harvestInputForm.coffee_raw_quantity || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="coffee_dry_quantity">Dry Coffee Quantity (kg):</label>
-                <input
-                  type="number"
-                  step="0.01" // Allow decimal for quantity
-                  id="coffee_dry_quantity"
-                  name="coffee_dry_quantity"
-                  value={harvestInputForm.coffee_dry_quantity || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="coffee_premium_grade">Premium Grade:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="coffee_premium_grade"
-                  name="coffee_premium_grade"
-                  value={harvestInputForm.coffee_premium_grade || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="coffee_fine_grade">Fine Grade:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="coffee_fine_grade"
-                  name="coffee_fine_grade"
-                  value={harvestInputForm.coffee_fine_grade || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="coffee_commercial_grade">Commercial Grade:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  id="coffee_commercial_grade"
-                  name="coffee_commercial_grade"
-                  value={harvestInputForm.coffee_commercial_grade || ""}
-                  onChange={handleHarvestInputChange}
-                  required
-                  className="form-input"
-                />
-              </div>
-              <div className="form-actions">
-                <button type="submit" className="submit-btn">
-                  {isEditingHarvest ? "Update Harvest" : "Save Harvest"}
-                </button>
-                <button type="button" onClick={cancelHarvestEdit} className="cancel-btn">
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
+                >
+                  {isEditingHarvest ? 'Update Harvest' : 'Record Harvest'}
                 </button>
               </div>
             </form>
           </div>
-        )}
+
+          {/* Edit Modal */}
+          {isModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className={`relative w-full max-w-3xl p-8 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                <button
+                  onClick={closeModal}
+                  className={`absolute top-4 right-4 text-2xl ${isDarkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-700'}`}
+                >
+                  ×
+                </button>
+                
+                <h3 className={`text-2xl font-bold mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Edit Harvest Record
+                </h3>
+
+                <form onSubmit={saveHarvestData} className="space-y-6">
+                  {/* Plant and Date Selection */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Plant
+                      </label>
+                      <select
+                        name="plant_id"
+                        value={harvestInputForm.plant_id}
+                        onChange={handleHarvestInputChange}
+                        className={`w-full px-4 py-2.5 rounded-lg border ${
+                          isDarkMode
+                            ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                            : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                        } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                        required
+                      >
+                        <option value="">Select a plant</option>
+                        {plantDataList.map((plant) => (
+                          <option key={plant.plant_id} value={plant.plant_id}>
+                            {plant.coffee_variety} (Planted: {new Date(plant.planting_date).toLocaleDateString()})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Harvest Date
+                      </label>
+                      <input
+                        type="date"
+                        name="harvest_date"
+                        value={harvestInputForm.harvest_date}
+                        onChange={handleHarvestInputChange}
+                        className={`w-full px-4 py-2.5 rounded-lg border ${
+                          isDarkMode
+                            ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                            : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                        } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Raw and Dry Quantity */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Raw Coffee Quantity (kg)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="coffee_raw_quantity"
+                        value={harvestInputForm.coffee_raw_quantity}
+                        onChange={handleHarvestInputChange}
+                        className={`w-full px-4 py-2.5 rounded-lg border ${
+                          isDarkMode
+                            ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                            : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                        } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                        required
+                      />
+                      {harvestInputForm.coffee_raw_quantity > 0 && (
+                        <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          Maximum dry quantity: {maxDryQuantity}kg (of raw quantity)
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Total Dry Coffee Quantity (kg)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="coffee_dry_quantity"
+                        value={harvestInputForm.coffee_dry_quantity}
+                        readOnly
+                        className={`w-full px-4 py-2.5 rounded-lg border ${
+                          isDarkMode
+                            ? 'bg-gray-600 border-gray-600 text-white'
+                            : 'bg-gray-100 border-gray-300 text-gray-900'
+                        } cursor-not-allowed`}
+                      />
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Auto-calculated from grades
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Coffee Grades */}
+                  <div className="space-y-2">
+                    <h4 className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                      Coffee Grades
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-2">
+                        <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Premium Grade (kg)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="coffee_premium_grade"
+                          value={harvestInputForm.coffee_premium_grade}
+                          onChange={(e) => {
+                            handleHarvestInputChange(e);
+                            if (!validateGradeInput(e.target.value, 'coffee_premium_grade')) {
+                              toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                            }
+                          }}
+                          className={`w-full px-4 py-2.5 rounded-lg border ${
+                            isDarkMode
+                              ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                              : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                          } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Fine Grade (kg)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="coffee_fine_grade"
+                          value={harvestInputForm.coffee_fine_grade}
+                          onChange={(e) => {
+                            handleHarvestInputChange(e);
+                            if (!validateGradeInput(e.target.value, 'coffee_fine_grade')) {
+                              toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                            }
+                          }}
+                          className={`w-full px-4 py-2.5 rounded-lg border ${
+                            isDarkMode
+                              ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                              : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                          } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          Commercial Grade (kg)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          name="coffee_commercial_grade"
+                          value={harvestInputForm.coffee_commercial_grade}
+                          onChange={(e) => {
+                            handleHarvestInputChange(e);
+                            if (!validateGradeInput(e.target.value, 'coffee_commercial_grade')) {
+                              toast.warning(`Total dry quantity cannot exceed ${maxDryQuantity}kg`);
+                            }
+                          }}
+                          className={`w-full px-4 py-2.5 rounded-lg border ${
+                            isDarkMode
+                              ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                              : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                          } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-4 pt-4">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className={`px-6 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                        isDarkMode
+                          ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                          : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className={`px-6 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                        isDarkMode
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-green-600 hover:bg-green-700 text-white'
+                      }`}
+                    >
+                      Update Harvest
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Harvest History Section */}
+          <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Harvest History</h3>
+              <div className={`p-3 rounded-full ${isDarkMode ? 'bg-blue-900' : 'bg-blue-100'}`}>
+                <svg className={`w-6 h-6 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {harvestDataList.map((harvest) => (
+                <div
+                  key={harvest.harvest_id}
+                  className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} hover:shadow-lg transition-shadow duration-200`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h4 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        {new Date(harvest.harvest_date).toLocaleDateString()}
+                      </h4>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Plant ID: {harvest.plant_id}
+                      </p>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => editHarvest(harvest)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isDarkMode
+                            ? 'hover:bg-gray-600 text-blue-400'
+                            : 'hover:bg-gray-200 text-blue-600'
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => deleteHarvest(harvest.harvest_id)}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isDarkMode
+                            ? 'hover:bg-gray-600 text-red-400'
+                            : 'hover:bg-gray-200 text-red-600'
+                        }`}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Raw Quantity</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {harvest.coffee_raw_quantity} kg
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dry Quantity</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {harvest.coffee_dry_quantity} kg
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Premium Grade</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {harvest.coffee_premium_grade} kg
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Fine Grade</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {harvest.coffee_fine_grade} kg
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Commercial Grade</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {harvest.coffee_commercial_grade} kg
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </Layout>
   );

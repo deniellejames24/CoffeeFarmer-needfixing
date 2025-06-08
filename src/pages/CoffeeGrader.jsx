@@ -18,9 +18,9 @@ const CoffeeGrader = () => {
   // Dropdown options for Physical Description - simplified to only lead to Fine, Premium, Commercial
   const descriptionOptions = [
     { value: "", label: "Select description..." },
-    { value: "uniform_minimal_defects", label: "Uniform, minimal defects (Fine)" },
-    { value: "slight_variation_few_defects", label: "Slight variation, few defects (Premium)" },
-    { value: "mixed_sizes_more_defects", label: "Mixed sizes, more defects (Commercial)" },
+    { value: "uniform_minimal_defects", label: "Uniform, minimal defects" },
+    { value: "slight_variation_few_defects", label: "Slight variation, few defects" },
+    { value: "mixed_sizes_more_defects", label: "Mixed sizes, more defects" },
   ];
 
   useEffect(() => {
@@ -171,85 +171,178 @@ const CoffeeGrader = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Coffee Grade Predictor
-          </h2>
-        </div>
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Coffee Grade Predictor</h1>
-            {user && (
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Welcome back, {user.first_name} {user.last_name}</p>
-            )}
-          </div>
-          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
-            <form onSubmit={e => { e.preventDefault(); gradeCoffee(); }} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Coffee Bean Size (mm)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={beanSize}
-                    onChange={e => setBeanSize(e.target.value)}
-                    placeholder="e.g., 6.8"
-                    required
-                    className={`mt-1 block w-full rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:ring-indigo-500 focus:border-indigo-500`}
-                  />
-                  <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Average diameter of coffee beans.</p>
-                </div>
-                <div>
-                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Weight (100 beans in grams)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={beanWeight}
-                    onChange={e => setBeanWeight(e.target.value)}
-                    placeholder="e.g., 9.2"
-                    required
-                    className={`mt-1 block w-full rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:ring-indigo-500 focus:border-indigo-500`}
-                  />
-                  <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Weight of 100 random coffee beans.</p>
-                </div>
-                <div className="md:col-span-2">
-                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Physical Description</label>
-                  <select
-                    value={beanDescription}
-                    onChange={e => setBeanDescription(e.target.value)}
-                    required
-                    className={`mt-1 block w-full rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'} focus:ring-indigo-500 focus:border-indigo-500`}
-                  >
-                    {descriptionOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Select the best description of the beans' physical quality.</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Enhanced Header Section */}
+        <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                Coffee Grade Predictor
+              </h2>
+              {user && (
+                <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Welcome back, <span className="font-semibold">{user.first_name} {user.last_name}</span>
+                </p>
+              )}
+              <p className={`mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Enter your coffee bean measurements below to predict their grade
+              </p>
+            </div>
+            <div className={`hidden md:block p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <div className="text-center">
+                <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Grade Scale</div>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Fine</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Premium</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>Commercial</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex justify-end md:col-span-2">
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="max-w-7xl mx-auto">
+          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-8`}>
+            <form onSubmit={e => { e.preventDefault(); gradeCoffee(); }} className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Bean Size Input */}
+                <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Coffee Bean Size (mm)
+                  </label>
+                  <div className="mt-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={beanSize}
+                      onChange={e => setBeanSize(e.target.value)}
+                      placeholder="e.g., 6.8"
+                      required
+                      className={`block w-full rounded-md border-2 ${
+                        isDarkMode 
+                          ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                      } focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200`}
+                    />
+                  </div>
+                  <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Average diameter of coffee beans
+                  </p>
+                </div>
+
+                {/* Bean Weight Input */}
+                <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                  <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Weight (100 beans in grams)
+                  </label>
+                  <div className="mt-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={beanWeight}
+                      onChange={e => setBeanWeight(e.target.value)}
+                      placeholder="e.g., 9.2"
+                      required
+                      className={`block w-full rounded-md border-2 ${
+                        isDarkMode 
+                          ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' 
+                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                      } focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200`}
+                    />
+                  </div>
+                  <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Weight of 100 random coffee beans
+                  </p>
+                </div>
+
+                {/* Physical Description Select */}
+                <div className="md:col-span-2">
+                  <div className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                    <label className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Physical Description
+                    </label>
+                    <div className="mt-2">
+                      <select
+                        value={beanDescription}
+                        onChange={e => setBeanDescription(e.target.value)}
+                        required
+                        className={`block w-full rounded-md border-2 ${
+                          isDarkMode 
+                            ? 'bg-gray-600 border-gray-500 text-white' 
+                            : 'bg-white border-gray-300 text-gray-900'
+                        } focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200`}
+                      >
+                        {descriptionOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Select the best description of the beans' physical quality
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex justify-center pt-4">
                 <button
                   type="submit"
-                  className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${isDarkMode ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500' : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'}`}
+                  className="px-8 py-3 text-base font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transform transition-transform duration-200 hover:scale-105"
                 >
                   Predict Grade
                 </button>
               </div>
             </form>
-            {/* Prediction Results */}
+
+            {/* Enhanced Prediction Results */}
             {predictedGrade && (
-              <div className={`mt-6 p-4 rounded-md ${
+              <div className={`mt-8 p-6 rounded-lg ${
                 messageType === 'success' 
                   ? isDarkMode 
-                    ? 'bg-green-900/50 text-green-200'
-                    : 'bg-green-50 text-green-800'
+                    ? 'bg-green-900/30 border-2 border-green-500/30' 
+                    : 'bg-green-50 border-2 border-green-200'
                   : isDarkMode
-                    ? 'bg-red-900/50 text-red-200'
-                    : 'bg-red-50 text-red-800'
+                    ? 'bg-red-900/30 border-2 border-red-500/30'
+                    : 'bg-red-50 border-2 border-red-200'
               }`}>
-                <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Predicted Grade</h3>
-                <p className="mt-2">{predictedGrade}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className={`text-lg font-medium ${
+                      messageType === 'success'
+                        ? isDarkMode ? 'text-green-200' : 'text-green-800'
+                        : isDarkMode ? 'text-red-200' : 'text-red-800'
+                    }`}>
+                      Predicted Grade
+                    </h3>
+                    <p className={`mt-2 text-xl font-bold ${
+                      messageType === 'success'
+                        ? isDarkMode ? 'text-green-100' : 'text-green-900'
+                        : isDarkMode ? 'text-red-100' : 'text-red-900'
+                    }`}>
+                      {predictedGrade}
+                    </p>
+                  </div>
+                  {messageType === 'success' && (
+                    <div className={`hidden md:block h-16 w-16 rounded-full ${
+                      predictedGrade.includes('Fine') 
+                        ? 'bg-green-500' 
+                        : predictedGrade.includes('Premium')
+                          ? 'bg-blue-500'
+                          : 'bg-yellow-500'
+                    } opacity-75`} />
+                  )}
+                </div>
               </div>
             )}
           </div>

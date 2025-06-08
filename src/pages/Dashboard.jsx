@@ -121,11 +121,20 @@ const Dashboard = () => {
         const totalFine = harvestData.reduce((sum, h) => sum + (h.coffee_fine_grade || 0), 0);
         const totalPremium = harvestData.reduce((sum, h) => sum + (h.coffee_premium_grade || 0), 0);
         const totalCommercial = harvestData.reduce((sum, h) => sum + (h.coffee_commercial_grade || 0), 0);
+        const totalGrades = totalFine + totalPremium + totalCommercial;
 
         setGradeDistributionData({
-          labels: ['Fine Grade', 'Premium Grade', 'Commercial Grade'],
+          labels: [
+            `Fine Grade\n${((totalFine / totalGrades) * 100).toFixed(1)}%\n(${totalFine.toFixed(1)} kg)`,
+            `Premium Grade\n${((totalPremium / totalGrades) * 100).toFixed(1)}%\n(${totalPremium.toFixed(1)} kg)`,
+            `Commercial Grade\n${((totalCommercial / totalGrades) * 100).toFixed(1)}%\n(${totalCommercial.toFixed(1)} kg)`
+          ],
           datasets: [{
-            data: [totalFine, totalPremium, totalCommercial],
+            data: [
+              ((totalFine / totalGrades) * 100).toFixed(1),
+              ((totalPremium / totalGrades) * 100).toFixed(1),
+              ((totalCommercial / totalGrades) * 100).toFixed(1)
+            ],
             backgroundColor: ['#6b4226', '#d2a679', '#f8d3ac'],
             hoverBackgroundColor: ['#8c5c3e', '#e0b58e', '#fae2bb']
           }]
@@ -161,23 +170,27 @@ const Dashboard = () => {
         });
 
         // Process recent activities
-        const activities = [
-          ...(recentFarmersResult.data || []).map(f => ({
+        const activities = {
+          registrations: (recentFarmersResult.data || []).map(f => ({
             date: new Date(f.created_at).toLocaleDateString(),
             activity: "New Farmer Registration",
             farmer: `${f.users?.first_name || 'N/A'} ${f.users?.last_name || ''}`,
             status: "Completed"
           })),
-          ...(recentHarvestsResult.data || []).map(h => ({
+          harvests: (recentHarvestsResult.data || []).map(h => ({
             date: new Date(h.harvest_date).toLocaleDateString(),
             activity: "Harvest Recorded",
             farmer: `${h.farmer_detail?.users?.first_name || 'N/A'} ${h.farmer_detail?.users?.last_name || ''}`,
             status: "Completed"
           }))
-        ];
+        };
 
-        activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setRecentActivities(activities.slice(0, 5));
+        // Sort each activity group by date
+        Object.keys(activities).forEach(key => {
+          activities[key].sort((a, b) => new Date(b.date) - new Date(a.date));
+        });
+
+        setRecentActivities(activities);
 
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
@@ -283,28 +296,111 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-
-          <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Recent Activities</h3>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{activity.activity}</p>
-                      <p className="text-sm text-gray-500">by {activity.farmer}</p>
+          
+          {/* Recent Activities Section */}
+          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
+            <h2 className={`text-xl font-bold mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Recent Activities
+            </h2>
+            
+            {/* Farmer Registrations */}
+            <div className="mb-8">
+              <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                New Farmer Registrations
+              </h3>
+              <div className="space-y-4">
+                {recentActivities.registrations?.length > 0 ? (
+                  recentActivities.registrations.map((activity, index) => (
+                    <div
+                      key={`registration-${index}`}
+                      className={`p-4 rounded-lg ${
+                        isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {activity.farmer}
+                          </p>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.activity}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.date}
+                          </p>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            activity.status === "Completed"
+                              ? isDarkMode
+                                ? 'bg-green-900 text-green-200'
+                                : 'bg-green-100 text-green-800'
+                              : isDarkMode
+                                ? 'bg-yellow-900 text-yellow-200'
+                                : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {activity.status}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm text-gray-500">{activity.date}</span>
-                      <span className="px-2 py-1 text-xs font-medium text-green-800 bg-green-100 rounded-full">
+                  ))
+                ) : (
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    No recent farmer registrations
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Harvest Records */}
+            <div>
+              <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Recent Harvest Records
+              </h3>
+              <div className="space-y-4">
+                {recentActivities.harvests?.length > 0 ? (
+                  recentActivities.harvests.map((activity, index) => (
+                    <div
+                      key={`harvest-${index}`}
+                      className={`p-4 rounded-lg ${
+                        isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                    <div>
+                          <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {activity.farmer}
+                          </p>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.activity}
+                          </p>
+                    </div>
+                        <div className="text-right">
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.date}
+                          </p>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            activity.status === "Completed"
+                              ? isDarkMode
+                                ? 'bg-green-900 text-green-200'
+                                : 'bg-green-100 text-green-800'
+                              : isDarkMode
+                                ? 'bg-yellow-900 text-yellow-200'
+                                : 'bg-yellow-100 text-yellow-800'
+                          }`}>
                         {activity.status}
                       </span>
                     </div>
                   </div>
                 </div>
-              ))}
+                  ))
+                ) : (
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    No recent harvest records
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -334,7 +430,7 @@ const Dashboard = () => {
       <div className={`max-w-7xl mx-auto`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
-          <div className="mb-8">
+          <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
             <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Dashboard Overview</h1>
             {user && (
               <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -375,28 +471,110 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Recent Activities */}
-          <div className={`rounded-lg shadow ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className={`px-6 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <h3 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Recent Activities</h3>
-            </div>
-            <div className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{activity.activity}</p>
-                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>by {activity.farmer}</p>
+          {/* Recent Activities Section */}
+          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6`}>
+            <h2 className={`text-xl font-bold mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Recent Activities
+            </h2>
+            
+            {/* Farmer Registrations */}
+            <div className="mb-8">
+              <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                New Farmer Registrations
+              </h3>
+              <div className="space-y-4">
+                {recentActivities.registrations?.length > 0 ? (
+                  recentActivities.registrations.map((activity, index) => (
+                    <div
+                      key={`registration-${index}`}
+                      className={`p-4 rounded-lg ${
+                        isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {activity.farmer}
+                          </p>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.activity}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.date}
+                          </p>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            activity.status === "Completed"
+                              ? isDarkMode
+                                ? 'bg-green-900 text-green-200'
+                                : 'bg-green-100 text-green-800'
+                              : isDarkMode
+                                ? 'bg-yellow-900 text-yellow-200'
+                                : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {activity.status}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{activity.date}</span>
-                      <span className="px-2 py-1 text-xs font-medium text-green-800 bg-green-100 rounded-full">
+                  ))
+                ) : (
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    No recent farmer registrations
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Harvest Records */}
+            <div>
+              <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                Recent Harvest Records
+              </h3>
+              <div className="space-y-4">
+                {recentActivities.harvests?.length > 0 ? (
+                  recentActivities.harvests.map((activity, index) => (
+                    <div
+                      key={`harvest-${index}`}
+                      className={`p-4 rounded-lg ${
+                        isDarkMode ? 'bg-gray-700' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                    <div>
+                          <p className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {activity.farmer}
+                          </p>
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.activity}
+                          </p>
+                    </div>
+                        <div className="text-right">
+                          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {activity.date}
+                          </p>
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            activity.status === "Completed"
+                              ? isDarkMode
+                                ? 'bg-green-900 text-green-200'
+                                : 'bg-green-100 text-green-800'
+                              : isDarkMode
+                                ? 'bg-yellow-900 text-yellow-200'
+                                : 'bg-yellow-100 text-yellow-800'
+                          }`}>
                         {activity.status}
                       </span>
                     </div>
                   </div>
                 </div>
-              ))}
+                  ))
+                ) : (
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    No recent harvest records
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -13,12 +13,15 @@ export default defineConfig(({ command, mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
-      strictPort: true
+      strictPort: true,
+      // Add historyApiFallback for client-side routing
+      historyApiFallback: true
     },
     resolve: {
-      extensions: ['.js', '.jsx', '.json']
+      extensions: ['.ts', '.tsx', '.js', '.jsx', '.json']
     },
-    base: '/CoffeeFarmer/',
+    assetsInclude: ['**/*.fbx', '**/*.mtl', '**/*.obj'],
+    publicDir: 'public',
     css: {
       postcss: {
         plugins: [

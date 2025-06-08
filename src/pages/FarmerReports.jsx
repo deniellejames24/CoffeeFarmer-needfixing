@@ -1,7 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useTheme } from "../lib/ThemeContext";
+import Layout from "../components/Layout";
+import { useAuth } from "../lib/AuthProvider";
+import SearchableDropdown from "../components/SearchableDropdown";
 
 // Import Chart.js components
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
@@ -12,13 +15,28 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const FarmerReports = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { isDarkMode, toggleTheme } = useTheme();
-  const [loggedInUser, setLoggedInUser] = useState(null);
+  const { isDarkMode } = useTheme();
+  const { user } = useAuth();
   const [farmersReport, setFarmersReport] = useState([]);
   const [filteredFarmers, setFilteredFarmers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [topPerformers, setTopPerformers] = useState([]);
+  const [performanceData, setPerformanceData] = useState({
+    labels: [],
+    datasets: [
+      {
+        label: 'Total Raw Yield (kg)',
+        data: [],
+        backgroundColor: 'rgb(75, 192, 192)',
+      },
+      {
+        label: 'Total Trees',
+        data: [],
+        backgroundColor: 'rgb(54, 162, 235)',
+      }
+    ]
+  });
 
   // Filter States
   const [searchName, setSearchName] = useState("");
@@ -26,643 +44,439 @@ const FarmerReports = () => {
   const [minYield, setMinYield] = useState("");
   const [minTrees, setMinTrees] = useState("");
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/login");
-  };
-
-  const adminLinks = [
-    { name: "Dashboard", path: "/dashboard" },
-    { name: "Farmer Management", path: "/user-management" },
-    { name: "Predictive Analytics", path: "/predictive-analytics" },
-    { name: "DSS Recommendations", path: "/dss-recommendations" },
-    { name: "Farmer Report", path: "/farmer-reports" },
-    { name: "Coffee Grade Predictor", path: "/coffee-grader" },
-  ];
+  // New states for unique values
+  const [uniqueNames, setUniqueNames] = useState([]);
+  const [uniqueLocations, setUniqueLocations] = useState([]);
 
   // Function to fetch all necessary data and combine them
-  const fetchAllFarmerData = useCallback(async () => {
+  const fetchFarmerReports = useCallback(async () => {
+    try {
     setLoading(true);
     setError(null);
-    try {
-      // 1. Fetch all users (specifically farmers)
-      const { data: usersData, error: usersError } = await supabase
+
+      // First fetch users
+      const { data: users, error: usersError } = await supabase
         .from('users')
-        .select('id, first_name, middle_name, last_name, email, role')
-        .eq('role', 'farmer');
+        .select('id, first_name, last_name');
 
       if (usersError) throw usersError;
 
-      // 2. Fetch all farmer_detail
-      const { data: farmerDetailData, error: farmerDetailError } = await supabase
+      // Then fetch farmer details
+      const { data: farmerDetails, error: farmerError } = await supabase
         .from('farmer_detail')
-        .select('id, farm_location, farm_size, farm_elevation');
+        .select(`
+          farmers_details,
+          id,
+          farm_location,
+          farm_size,
+          farm_elevation,
+          plant_id
+        `);
 
-      if (farmerDetailError) throw farmerDetailError;
+      if (farmerError) throw farmerError;
 
-      // 3. Fetch all plant_data
+      // Fetch plant data
       const { data: plantData, error: plantError } = await supabase
         .from('plant_data')
-        .select('farmer_id, number_of_tree_planted'); // Only need these for aggregation
+        .select('plant_id, farmer_id, number_of_tree_planted');
 
       if (plantError) throw plantError;
 
-      // 4. Fetch all harvest_data
-      const { data: harvestData, error: harvestError } = await supabase
+      // Fetch harvest data
+      const { data: harvests, error: harvestError } = await supabase
         .from('harvest_data')
-        .select('farmer_id, coffee_raw_quantity, coffee_dry_quantity, coffee_premium_grade, coffee_fine_grade, coffee_commercial_grade');
+        .select('*');
 
       if (harvestError) throw harvestError;
 
-      // --- Data Aggregation and Joining ---
-      const aggregatedReports = usersData.map(user => {
-        const detail = farmerDetailData.find(fd => fd.id === user.id);
+      // Process and combine the data
+      const processedData = farmerDetails.map(farmer => {
+        // Get user information
+        const user = users.find(u => u.id === farmer.id);
 
-        // Aggregate plant data for the current farmer
-        const farmerPlants = plantData.filter(pd => pd.farmer_id === user.id);
-        const totalTrees = farmerPlants.reduce((sum, p) => sum + (p.number_of_tree_planted || 0), 0);
+        // Get all plants for this farmer
+        const farmerPlants = plantData.filter(p => p.farmer_id === farmer.id);
+        const totalTrees = farmerPlants.reduce((sum, plant) => sum + (plant.number_of_tree_planted || 0), 0);
 
-        // Aggregate harvest data for the current farmer
-        const farmerHarvests = harvestData.filter(hd => hd.farmer_id === user.id);
-        const totalRawQuantity = farmerHarvests.reduce((sum, h) => sum + (h.coffee_raw_quantity || 0), 0);
-        const totalDryQuantity = farmerHarvests.reduce((sum, h) => sum + (h.coffee_dry_quantity || 0), 0);
+        // Get all harvests for this farmer
+        const farmerHarvests = harvests.filter(h => h.farmer_id === farmer.id);
+        
+        // Calculate total yields
+        const totalRawYield = farmerHarvests.reduce((sum, h) => sum + (h.coffee_raw_quantity || 0), 0);
+        const totalDryYield = farmerHarvests.reduce((sum, h) => sum + (h.coffee_dry_quantity || 0), 0);
+        const premiumGrade = farmerHarvests.reduce((sum, h) => sum + (h.coffee_premium_grade || 0), 0);
+        const fineGrade = farmerHarvests.reduce((sum, h) => sum + (h.coffee_fine_grade || 0), 0);
+        const commercialGrade = farmerHarvests.reduce((sum, h) => sum + (h.coffee_commercial_grade || 0), 0);
 
-        const sumPremium = farmerHarvests.reduce((sum, h) => sum + (h.coffee_premium_grade || 0), 0);
-        const sumFine = farmerHarvests.reduce((sum, h) => sum + (h.coffee_fine_grade || 0), 0);
-        const sumCommercial = farmerHarvests.reduce((sum, h) => sum + (h.coffee_commercial_grade || 0), 0);
-        const harvestCount = farmerHarvests.length;
+        // Calculate averages
+        const avgYieldPerTree = totalTrees > 0 ? totalDryYield / totalTrees : 0;
 
-        const avgPremium = harvestCount > 0 ? sumPremium / harvestCount : 0;
-        const avgFine = harvestCount > 0 ? sumFine / harvestCount : 0;
-        const avgCommercial = harvestCount > 0 ? sumCommercial / harvestCount : 0;
+        // Get the latest harvest date
+        const lastHarvestDate = farmerHarvests.length > 0 
+          ? new Date(Math.max(...farmerHarvests.map(h => new Date(h.harvest_date))))
+          : null;
 
         return {
-          id: user.id,
-          first_name: user.first_name,
-          middle_name: user.middle_name,
-          last_name: user.last_name,
-          email: user.email,
-          role: user.role,
-          farm_location: detail?.farm_location || 'N/A',
-          farm_size: detail?.farm_size || 0,
-          farm_elevation: detail?.farm_elevation || 0,
+          id: farmer.id,
+          name: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'Unnamed Farmer',
+          farm_location: farmer.farm_location,
+          farm_size: farmer.farm_size,
+          farm_elevation: farmer.farm_elevation,
           total_trees: totalTrees,
-          total_raw_quantity: totalRawQuantity,
-          total_dry_quantity: totalDryQuantity,
-          avg_premium_grade: avgPremium,
-          avg_fine_grade: avgFine,
-          avg_commercial_grade: avgCommercial,
-          total_harvest_records: harvestCount,
+          totalRawYield,
+          totalDryYield,
+          avgYieldPerTree,
+          premiumGrade,
+          fineGrade,
+          commercialGrade,
+          lastHarvest: lastHarvestDate ? lastHarvestDate.toLocaleDateString() : 'N/A',
+          harvestCount: farmerHarvests.length
         };
       });
 
-      setFarmersReport(aggregatedReports);
-      setFilteredFarmers(aggregatedReports); // Initialize filtered list with all data
+      // Sort farmers by total yield for the performance chart
+      const sortedByYield = [...processedData].sort((a, b) => b.totalDryYield - a.totalDryYield);
+      const top5Farmers = sortedByYield.slice(0, 5);
+
+      // Update performance chart data
+      setPerformanceData({
+        labels: top5Farmers.map(f => f.name),
+        datasets: [
+          {
+            label: 'Total Raw Yield (kg)',
+            data: top5Farmers.map(f => f.totalRawYield.toFixed(2)),
+            backgroundColor: 'rgb(75, 192, 192)',
+          },
+          {
+            label: 'Total Trees',
+            data: top5Farmers.map(f => f.total_trees),
+            backgroundColor: 'rgb(54, 162, 235)',
+          }
+        ]
+      });
+
+      // Set top performers
+      setTopPerformers(top5Farmers.slice(0, 3));
+
+      // Update the main data states
+      setFarmersReport(processedData);
+      setFilteredFarmers(processedData);
+
+      // After processing the data, extract unique values
+      const names = [...new Set(processedData.map(farmer => farmer.name))];
+      const locations = [...new Set(processedData.map(farmer => farmer.farm_location))];
+      
+      setUniqueNames(names);
+      setUniqueLocations(locations);
 
     } catch (err) {
-      console.error("Error fetching farmer report data:", err.message);
-      setError("Failed to load farmer report data: " + err.message);
-      setFarmersReport([]);
-      setFilteredFarmers([]);
+      console.error('Error fetching farmer reports:', err);
+      setError('Failed to load farmer reports. Please try again later.');
     } finally {
       setLoading(false);
     }
-  }, []); // No dependencies, runs once on mount
+  }, []);
 
-  // Effect to filter farmers based on search and filter criteria
   useEffect(() => {
-    let currentFiltered = farmersReport.filter(farmer => {
-      // Filter by Name
-      const fullName = `${farmer.first_name} ${farmer.last_name}`.toLowerCase();
-      if (searchName && !fullName.includes(searchName.toLowerCase())) {
-        return false;
+    fetchFarmerReports();
+  }, [fetchFarmerReports]);
+
+  // Filter function
+  const applyFilters = useCallback(() => {
+    let filtered = [...farmersReport];
+
+    if (searchName) {
+      filtered = filtered.filter(farmer =>
+        farmer.name.toLowerCase().includes(searchName.toLowerCase())
+      );
       }
 
-      // Filter by Location
-      if (searchLocation && !farmer.farm_location.toLowerCase().includes(searchLocation.toLowerCase())) {
-        return false;
+    if (searchLocation) {
+      filtered = filtered.filter(farmer =>
+        farmer.farm_location.toLowerCase().includes(searchLocation.toLowerCase())
+      );
       }
 
-      // Filter by Minimum Yield
-      const parsedMinYield = parseFloat(minYield);
-      if (!isNaN(parsedMinYield) && farmer.total_raw_quantity < parsedMinYield) {
-        return false;
+    if (minYield) {
+      filtered = filtered.filter(farmer =>
+        farmer.totalDryYield >= parseFloat(minYield)
+      );
       }
 
-      // Filter by Minimum Trees
-      const parsedMinTrees = parseInt(minTrees);
-      if (!isNaN(parsedMinTrees) && farmer.total_trees < parsedMinTrees) {
-        return false;
+    if (minTrees) {
+      filtered = filtered.filter(farmer =>
+        farmer.total_trees >= parseInt(minTrees)
+      );
       }
 
-      return true;
-    });
-
-    setFilteredFarmers(currentFiltered);
+    setFilteredFarmers(filtered);
   }, [farmersReport, searchName, searchLocation, minYield, minTrees]);
 
-  // Effect for initial auth check and data fetch
   useEffect(() => {
-    const checkAuthAndFetchReports = async () => {
-      setLoading(true);
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+    applyFilters();
+  }, [searchName, searchLocation, minYield, minTrees, applyFilters]);
 
-      if (!authUser) {
-        navigate("/login");
-        return;
-      }
-
-      const { data: loggedInUserData, error: userDetailsError } = await supabase
-        .from("users")
-        .select("first_name, last_name, role")
-        .eq("email", authUser.email)
-        .single();
-
-      if (userDetailsError) {
-        console.error("Error fetching logged-in user details:", userDetailsError.message);
-        navigate("/login");
-        return;
-      }
-
-      setLoggedInUser(loggedInUserData);
-
-      if (loggedInUserData.role === "admin") {
-        fetchAllFarmerData(); // Fetch reports if admin
-      } else {
-        navigate("/dashboard", { replace: true }); // Redirect if not admin
-      }
-    };
-
-    checkAuthAndFetchReports();
-  }, [navigate, fetchAllFarmerData]); // Depend on fetchAllFarmerData
-
-  // Prepare data for the chart based on filtered farmers
-  const chartData = {
-    labels: filteredFarmers.map(f => `${f.first_name} ${f.last_name}`),
-    datasets: [
-      {
-        label: 'Total Raw Coffee Quantity (kg)',
-        data: filteredFarmers.map(f => f.total_raw_quantity),
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        borderWidth: 1,
-      },
-    ],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-      title: {
-        display: true,
-        text: 'Farmer Raw Coffee Yield Comparison',
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            let label = context.dataset.label || '';
-            if (label) {
-                label += ': ';
-            }
-            if (context.parsed.y !== null) {
-                label += new Intl.NumberFormat('en-US', { style: 'unit', unit: 'kilogram' }).format(context.parsed.y);
-            }
-            return label;
-          }
-        }
-      }
-    },
-    scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'Farmer',
-        },
-      },
-      y: {
-        title: {
-          display: true,
-          text: 'Total Raw Quantity (kg)',
-        },
-        beginAtZero: true,
-      },
-    },
-  };
-
-  // Determine top performers (e.g., top 3 by total_raw_quantity)
-  const topPerformers = [...farmersReport] // Use farmersReport to ensure top performers are from all data, not just filtered
-    .sort((a, b) => b.total_raw_quantity - a.total_raw_quantity)
-    .slice(0, 3); // Get top 3
-
-  if (loading) {
-    return (
-      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'} flex`}>
-        {/* Sidebar Navigation */}
-        <div className={`w-64 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg relative`}>
-          <div className={`p-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="text-2xl">☕</div>
-                <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Admin Panel</h1>
-              </div>
-              <button
-                onClick={toggleTheme}
-                className={`p-2 rounded-md ${isDarkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
-              >
-                {isDarkMode ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-          <nav className="p-4">
-            <ul className="space-y-2">
-              {adminLinks.map((link) => (
-                <li key={link.path}>
-                  <button
-                    onClick={() => navigate(link.path)}
-                    className={`w-full text-left px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                      location.pathname === link.path
-                        ? isDarkMode 
-                          ? 'bg-gray-700 text-indigo-400'
-                          : 'bg-indigo-50 text-indigo-500'
-                        : isDarkMode
-                          ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-indigo-400'
-                          : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-indigo-400'
-                    }`}
-                  >
-                  {link.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
-          <div className={`sticky bottom-0 w-full p-4 border-t ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-            <button
-              onClick={handleLogout}
-              className={`w-full px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                isDarkMode
-                  ? 'text-indigo-400 bg-gray-700 hover:bg-gray-600 focus:ring-indigo-500'
-                  : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 focus:ring-indigo-500'
-              }`}
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="mb-8">
-              <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Farmer Reports</h1>
-              {loggedInUser && (
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Welcome back, {loggedInUser.first_name} {loggedInUser.last_name}</p>
-              )}
-            </div>
-            {/* Top Performers Section */}
-            <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-              <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Top 3 Best Performing Farmers</h2>
-              <div className="grid grid-cols-3 gap-4">
-                {topPerformers.map((farmer, index) => (
-                  <div 
-                    key={farmer.id} 
-                    className={`p-4 rounded-lg border ${
-                      isDarkMode 
-                        ? 'bg-gray-700 border-gray-600' 
-                        : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                        #{index + 1} {farmer.first_name} {farmer.last_name}
-                      </span>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        index === 0 
-                          ? 'bg-yellow-100 text-yellow-800' 
-                          : index === 1 
-                            ? 'bg-gray-100 text-gray-800' 
-                            : 'bg-orange-100 text-orange-800'
-                      }`}>
-                        {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
-                      </span>
-                    </div>
-                    <div className={`space-y-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-black'}`}>
-                      <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Location: {farmer.farm_location}</p>
-                      <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Total Raw Yield: {farmer.total_raw_quantity} kg</p>
-                      <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Total Trees: {farmer.total_trees}</p>
-                      <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Premium Grade: {farmer.avg_premium_grade.toFixed(2)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Filters */}
-            <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-              <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Filters</h2>
-              <div className="grid grid-cols-4 gap-4">
-                <input
-                  type="text"
-                  placeholder="Search by name..."
-                  value={searchName}
-                  onChange={e => setSearchName(e.target.value)}
-                  className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="text"
-                  placeholder="Search by location..."
-                  value={searchLocation}
-                  onChange={e => setSearchLocation(e.target.value)}
-                  className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="number"
-                  placeholder="Min yield (kg)"
-                  value={minYield}
-                  onChange={e => setMinYield(e.target.value)}
-                  className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="number"
-                  placeholder="Min trees"
-                  value={minTrees}
-                  onChange={e => setMinTrees(e.target.value)}
-                  className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-              </div>
-            </div>
-            {/* Chart */}
-            <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-              <Bar data={chartData} options={chartOptions} />
-            </div>
-            {/* Table */}
-            <div className={`rounded-lg shadow overflow-x-auto ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                  <tr>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Name</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Location</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Farm Size</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Elevation</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Total Trees</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Raw Yield (kg)</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Dry Yield (kg)</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Avg Premium</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Avg Fine</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Avg Commercial</th>
-                    <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>Harvest Records</th>
-                  </tr>
-                </thead>
-                <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {filteredFarmers.map((farmer) => (
-                    <tr key={farmer.id} className={isDarkMode ? 'bg-gray-800' : 'bg-white'}>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{farmer.first_name} {farmer.middle_name} {farmer.last_name}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_location}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_size}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_elevation}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_trees}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_raw_quantity}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_dry_quantity}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_premium_grade.toFixed(2)}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_fine_grade.toFixed(2)}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_commercial_grade.toFixed(2)}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_harvest_records}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="page-container">
-        <header className="page-header">
-          <div className="logo">☕</div>
-          <b><p>Farmer Reports</p></b>
-          <div className="user-info">
-            {loggedInUser && <span>{loggedInUser.role} | {loggedInUser.first_name} {loggedInUser.last_name}</span>}
-            {loggedInUser && <button onClick={handleLogout} className="logout-btn">Logout</button>}
-          </div>
-        </header>
-        <div className="page-main">
-          <nav className="sidebar">
-            <ul>
-              {adminLinks.map((link) => (
-                <li key={link.name} className={location.pathname === link.path ? "active" : ""}>
-                  {link.name}
-                </li>
-              ))}
-            </ul>
-          </nav>
-          <main className="content">
-            <p className="error-message">Error: {error}</p>
-            <p>Please try refreshing the page or contact support.</p>
-          </main>
-        </div>
-      </div>
-    );
+  if (!user) {
+    return <Navigate to="/login" />;
   }
 
   return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'} flex`}>
-      {/* Sidebar Navigation */}
-      <div className={`w-64 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg relative`}>
-        <div className={`p-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="text-2xl">☕</div>
-              <h1 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Admin Panel</h1>
+    <Layout>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
+          <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Farmer Reports
+          </h1>
+          {user && (
+            <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-700'}`}>
+              Welcome back, {user.first_name} {user.last_name}
+            </p>
+          )}
+          <p className={`mt-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-700'}`}>
+            Detailed reports and performance metrics for all farmers
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-900 border border-red-700 rounded-md text-red-200">
+            <p>{error}</p>
+          </div>
+        )}
+
+        {/* Performance Overview Chart */}
+        <div className={`rounded-lg p-6 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Farmer Performance Overview
+          </h2>
+          <div className="h-80">
+            <Bar
+              data={performanceData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: {
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'
+                    }
+                  },
+                  x: {
+                    grid: {
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'
+                    }
+                  }
+                },
+    plugins: {
+      legend: {
+                    labels: {
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Top 3 Best Performing Farmers */}
+        <div className={`rounded-lg p-6 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Top 3 Best Performing Farmers
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {topPerformers.map((farmer, index) => (
+              <div key={farmer.id} className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center">
+                    <span className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>#{index + 1}</span>
+                    </div>
+                  <div className="bg-yellow-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
+                    {index + 1}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{farmer.name}</p>
+                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Location: {farmer.farm_location}</p>
+                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Raw Yield: {farmer.totalRawYield.toFixed(2)} kg</p>
+                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Trees: {farmer.total_trees}</p>
+                  <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Premium Grade: {farmer.premiumGrade.toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
+        {/* Filter Section */}
+        <div className={`rounded-lg p-6 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <h2 className={`text-xl font-semibold mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Filter Farmers
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <SearchableDropdown
+              value={searchName}
+              onChange={setSearchName}
+              options={uniqueNames}
+              placeholder="Search by name..."
+              label="Farmer Name"
+              isDarkMode={isDarkMode}
+              icon={
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              }
+            />
+
+            <SearchableDropdown
+              value={searchLocation}
+              onChange={setSearchLocation}
+              options={uniqueLocations}
+              placeholder="Search by location..."
+              label="Location"
+              isDarkMode={isDarkMode}
+              icon={
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              }
+            />
+
+            <div className="relative">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Minimum Yield (kg)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={minYield}
+                  onChange={(e) => setMinYield(e.target.value)}
+                  placeholder="Min yield..."
+                  className={`mt-1 block w-full rounded-lg border-2 px-4 py-2.5 
+                    placeholder-gray-400 shadow-sm focus:ring-2 focus:ring-blue-500 
+                    focus:ring-opacity-50 transition-colors duration-200
+                    ${isDarkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500' 
+                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'}`}
+                />
+                <div className={`absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Minimum Trees
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={minTrees}
+                  onChange={(e) => setMinTrees(e.target.value)}
+                  placeholder="Min trees..."
+                  className={`mt-1 block w-full rounded-lg border-2 px-4 py-2.5 
+                    placeholder-gray-400 shadow-sm focus:ring-2 focus:ring-blue-500 
+                    focus:ring-opacity-50 transition-colors duration-200
+                    ${isDarkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500' 
+                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'}`}
+                />
+                <div className={`absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end space-x-3">
             <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-md ${isDarkMode ? 'text-yellow-400 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
+              onClick={() => {
+                setSearchName("");
+                setSearchLocation("");
+                setMinYield("");
+                setMinTrees("");
+              }}
+              className={`px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2
+                ${isDarkMode 
+                  ? 'bg-gray-700 text-white hover:bg-gray-600' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
             >
-              {isDarkMode ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              <span>Clear Filters</span>
+            </button>
+            <button
+              onClick={applyFilters}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 
+                transition-colors duration-200 flex items-center space-x-2"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
-              )}
+              <span>Apply Filters</span>
             </button>
           </div>
         </div>
-        <nav className="p-4">
-          <ul className="space-y-2">
-            {adminLinks.map((link) => (
-              <li key={link.path}>
-                <button
-                onClick={() => navigate(link.path)}
-                  className={`w-full text-left px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    location.pathname === link.path
-                      ? isDarkMode 
-                        ? 'bg-gray-700 text-indigo-400'
-                        : 'bg-indigo-50 text-indigo-500'
-                      : isDarkMode
-                        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-indigo-400'
-                        : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-indigo-400'
-                  }`}
-              >
-                {link.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className={`sticky bottom-0 w-full p-4 border-t ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-          <button
-            onClick={handleLogout}
-            className={`w-full px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              isDarkMode
-                ? 'text-indigo-400 bg-gray-700 hover:bg-gray-600 focus:ring-indigo-500'
-                : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 focus:ring-indigo-500'
-            }`}
-          >
-            Logout
-          </button>
+
+        {/* Filtered Results */}
+        <div className={`rounded-lg overflow-hidden ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          {loading ? (
+            <div className="p-6">
+              <div className="animate-pulse space-y-4">
+                <div className={`h-4 rounded w-1/4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className={`h-4 rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
+                  ))}
+                </div>
         </div>
       </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Farmer Reports</h1>
-            {loggedInUser && (
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Welcome back, {loggedInUser.first_name} {loggedInUser.last_name}</p>
-            )}
+          ) : (
+            <div className="overflow-x-auto">
+              {filteredFarmers.map((farmer) => (
+                <div key={farmer.id} className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} p-4`}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className={`text-lg font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        {farmer.name}
+                      </h3>
+                      <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Location: {farmer.farm_location}</p>
+                      <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Trees: {farmer.total_trees}</p>
+                      <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Yield: {farmer.totalDryYield.toFixed(2)} kg</p>
           </div>
-          {/* Top Performers Section */}
-          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Top 3 Best Performing Farmers</h2>
-            <div className="grid grid-cols-3 gap-4">
-                {topPerformers.map((farmer, index) => (
-                <div 
-                  key={farmer.id} 
-                  className={`p-4 rounded-lg border ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border-gray-600' 
-                      : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      #{index + 1} {farmer.first_name} {farmer.last_name}
-                    </span>
-                    <span className={`px-2 py-1 rounded-full text-sm ${
-                      index === 0 
-                        ? 'bg-yellow-100 text-yellow-800' 
-                        : index === 1 
-                          ? 'bg-gray-100 text-gray-800' 
-                          : 'bg-orange-100 text-orange-800'
-                    }`}>
-                      {index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}
-                    </span>
+                    <div className="text-right">
+                      <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Average Yield per Tree: {farmer.avgYieldPerTree.toFixed(2)} kg</p>
+                      <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Last Harvest: {farmer.lastHarvest}</p>
+                      <button
+                        onClick={() => navigate(`/farmer-profile/${farmer.id}`)}
+                        className={`mt-2 px-4 py-2 rounded-lg text-sm transition-colors
+                          ${isDarkMode
+                            ? 'bg-blue-600 text-white hover:bg-blue-500'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                      >
+                        View Details
+                      </button>
                   </div>
-                  <div className={`space-y-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-black'}`}>
-                    <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Location: {farmer.farm_location}</p>
-                    <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Total Raw Yield: {farmer.total_raw_quantity} kg</p>
-                    <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Total Trees: {farmer.total_trees}</p>
-                    <p className={isDarkMode ? 'text-gray-200' : 'text-gray-700'}>Premium Grade: {farmer.avg_premium_grade.toFixed(2)}</p>
                   </div>
                   </div>
                 ))}
               </div>
-          </div>
-          {/* Filters */}
-          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Filters</h2>
-            <div className="grid grid-cols-4 gap-4">
-                <input
-                  type="text"
-                placeholder="Search by name..."
-                  value={searchName}
-                onChange={e => setSearchName(e.target.value)}
-                className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="text"
-                placeholder="Search by location..."
-                  value={searchLocation}
-                onChange={e => setSearchLocation(e.target.value)}
-                className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="number"
-                placeholder="Min yield (kg)"
-                  value={minYield}
-                onChange={e => setMinYield(e.target.value)}
-                className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-                <input
-                  type="number"
-                placeholder="Min trees"
-                  value={minTrees}
-                onChange={e => setMinTrees(e.target.value)}
-                className={`px-4 py-2 rounded-md border ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                />
-            </div>
-          </div>
-          {/* Chart */}
-          <div className={`rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} p-6 mb-8`}>
-              <Bar data={chartData} options={chartOptions} />
-          </div>
-          {/* Table */}
-          <div className={`rounded-lg shadow overflow-x-auto ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className={isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Name</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Location</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Farm Size</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Elevation</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Total Trees</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Raw Yield (kg)</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Dry Yield (kg)</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Avg Premium</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Avg Fine</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Avg Commercial</th>
-                  <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-100 bg-gray-700' : 'text-black-700 bg-indigo-100'}`}>Harvest Records</th>
-                </tr>
-              </thead>
-              <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                {filteredFarmers.map((farmer) => (
-                  <tr key={farmer.id} className={isDarkMode ? 'bg-gray-800' : 'bg-white'}>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{farmer.first_name} {farmer.middle_name} {farmer.last_name}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_location}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_size}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.farm_elevation}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_trees}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_raw_quantity}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_dry_quantity}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_premium_grade.toFixed(2)}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_fine_grade.toFixed(2)}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.avg_commercial_grade.toFixed(2)}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>{farmer.total_harvest_records}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
       </div>
-    </div>
+    </Layout>
   );
 };
 

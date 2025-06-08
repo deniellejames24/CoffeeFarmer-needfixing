@@ -13,10 +13,9 @@ const Navbar = () => {
   const adminLinks = [
     { name: "Dashboard", path: "/dashboard" },
     { name: "Farmer Management", path: "/user-management" },
-    { name: "Predictive Analytics", path: "/predictive-analytics" },
-    { name: "DSS Recommendations", path: "/dss-recommendations" },
+    { name: "Analytics", path: "/admin-analytics" },
+    { name: "DSS Insights", path: "/farmer-recommendations" },
     { name: "Farmer Report", path: "/farmer-reports" },
-    { name: "Coffee Grade Predictor", path: "/coffee-grader" },
   ];
 
   const farmerLinks = [
@@ -24,7 +23,6 @@ const Navbar = () => {
     { name: "User Profile", path: "/user-profile" },
     { name: "Predictive Analytics", path: "/predictive-analytics" },
     { name: "DSS Recommendations", path: "/dss-recommendations" },
-    { name: "Coffee Grade Predictor", path: "/coffee-grader" },
     { name: "Land & Plant Declaration", path: "/land-declaration" },
     { name: "Harvest Reporting", path: "/harvest-reporting" },
   ];

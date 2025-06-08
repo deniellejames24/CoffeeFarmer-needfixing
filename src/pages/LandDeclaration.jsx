@@ -54,9 +54,6 @@ const LandDeclaration = () => {
         setFarmerDetails(farmerData);
         setHasFarmerDetail(true);
         setIsEditingFarmerDetail(false);
-        if (!initialLoadDone.current) {
-          toast.success("Farmer details loaded.");
-        }
 
         // Fetch plant data
         const { data: plantDataFetched, error: plantListError } = await supabase
@@ -67,17 +64,25 @@ const LandDeclaration = () => {
         if (!plantListError) {
           setPlantDataList(plantDataFetched || []);
           setShowPlantForm(false);
+          if (!initialLoadDone.current) {
+            const plantCount = plantDataFetched?.length || 0;
+            if (plantCount > 0) {
+              toast.success(`Farmer details and ${plantCount} plant record${plantCount > 1 ? 's' : ''} loaded successfully.`);
+            } else {
+              toast.success("Farmer details loaded. No plant records found.");
+            }
+          }
         } else {
           console.error("Error fetching plant data list:", plantListError);
           if (!initialLoadDone.current) {
-            toast.error("Error fetching associated plant data.");
+            toast.error("Error loading data. Please try refreshing the page.");
           }
           setPlantDataList([]);
         }
       } else if (farmerError) {
         console.error("Error fetching farmer details:", farmerError);
         if (!initialLoadDone.current) {
-          toast.error("Error fetching farmer details.");
+          toast.error("Error loading data. Please try refreshing the page.");
         }
       }
     } catch (error) {
@@ -297,132 +302,205 @@ const LandDeclaration = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-6">
-          <h2 className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Land & Plant Declaration
-          </h2>
-          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Manage your farm details and plant data
-          </p>
-        </div>
-
-        {/* Farmer Details Section */}
-        <div className={`bg-white rounded-lg shadow-sm mb-6 ${isDarkMode ? 'bg-gray-800' : ''}`}>
-          <div className={`px-4 py-5 border-b border-gray-200 ${isDarkMode ? 'border-gray-700' : ''}`}>
-            <h3 className={`text-lg leading-6 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              Farm Details
-            </h3>
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Header */}
+          <div className={`mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-6`}>
+            <h2 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              Land & Plant Declaration
+            </h2>
+            <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Manage your farm details and coffee plant information
+            </p>
           </div>
-          <div className="px-4 py-5">
-            {/* Your existing farmer details form */}
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="farm_location" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Farm Location
-                </label>
-                <input
-                  type="text"
-                  name="farm_location"
-                  id="farm_location"
-                  value={farmerDetails.farm_location}
-                  onChange={handleFarmerDetailChange}
-                  disabled={!isEditingFarmerDetail}
-                  className={`mt-1 block w-full rounded-md shadow-sm ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'border-gray-300 text-gray-900'
-                  } ${
-                    isEditingFarmerDetail 
-                      ? 'focus:ring-indigo-500 focus:border-indigo-500' 
-                      : ''
-                  }`}
-                />
-              </div>
-              
-              {/* Farm Size Input */}
-              <div>
-                <label htmlFor="farm_size" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Farm Size (hectares)
-                </label>
-                <input
-                  type="number"
-                  name="farm_size"
-                  id="farm_size"
-                  value={farmerDetails.farm_size}
-                  onChange={handleFarmerDetailChange}
-                  disabled={!isEditingFarmerDetail}
-                  className={`mt-1 block w-full rounded-md shadow-sm ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'border-gray-300 text-gray-900'
-                  } ${
-                    isEditingFarmerDetail 
-                      ? 'focus:ring-indigo-500 focus:border-indigo-500' 
-                      : ''
-                  }`}
-                />
-              </div>
 
-              {/* Farm Elevation Input */}
-              <div>
-                <label htmlFor="farm_elevation" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Farm Elevation (meters above sea level)
-                </label>
-                <input
-                  type="number"
-                  name="farm_elevation"
-                  id="farm_elevation"
-                  value={farmerDetails.farm_elevation}
-                  onChange={handleFarmerDetailChange}
-                  disabled={!isEditingFarmerDetail}
-                  className={`mt-1 block w-full rounded-md shadow-sm ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'border-gray-300 text-gray-900'
-                  } ${
-                    isEditingFarmerDetail 
-                      ? 'focus:ring-indigo-500 focus:border-indigo-500' 
-                      : ''
-                  }`}
-                />
-              </div>
-
-              {/* Farmer Details Action Buttons */}
-              <div className="flex justify-end space-x-3">
-                {isEditingFarmerDetail ? (
-                  <button
-                    onClick={saveFarmerDetails}
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Save Details
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setIsEditingFarmerDetail(true)}
-                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Edit Details
-                  </button>
-                )}
+          {/* Farm Details Section */}
+          <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Farm Details</h3>
+              <div className={`p-3 rounded-full ${isDarkMode ? 'bg-green-900' : 'bg-green-100'}`}>
+                <svg className={`w-6 h-6 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Plant Data Section */}
-        {hasFarmerDetail && (
-          <div className={`bg-white rounded-lg shadow-sm ${isDarkMode ? 'bg-gray-800' : ''}`}>
-            <div className={`px-4 py-5 border-b border-gray-200 ${isDarkMode ? 'border-gray-700' : ''}`}>
-              <div className="flex justify-between items-center">
-                <h3 className={`text-lg leading-6 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  Plant Data
-                </h3>
-                {!showPlantForm && (
+            {isEditingFarmerDetail ? (
+              <form onSubmit={(e) => { e.preventDefault(); saveFarmerDetails(); }} className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Farm Location
+                  </label>
+                  <input
+                    type="text"
+                    name="farm_location"
+                    value={farmerDetails.farm_location}
+                    onChange={handleFarmerDetailChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Farm Size (hectares)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="farm_size"
+                    value={farmerDetails.farm_size}
+                    onChange={handleFarmerDetailChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Farm Elevation (meters)
+                  </label>
+                  <input
+                    type="number"
+                    name="farm_elevation"
+                    value={farmerDetails.farm_elevation}
+                    onChange={handleFarmerDetailChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-green-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-green-500'
+                    } focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className={`w-full px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
+                >
+                  Save Farm Details
+                </button>
+              </form>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Farm Location</p>
+                  <p className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {farmerDetails.farm_location}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Farm Size</p>
+                  <p className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {farmerDetails.farm_size} hectares
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Farm Elevation</p>
+                  <p className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {farmerDetails.farm_elevation} meters
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Plant Data Section */}
+          <div className={`p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} hover:shadow-xl transition-shadow duration-200`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Coffee Plants</h3>
+              <div className="flex items-center space-x-4">
+                <div className={`p-3 rounded-full ${isDarkMode ? 'bg-indigo-900' : 'bg-indigo-100'}`}>
+                  <svg className={`w-6 h-6 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <button
+                  onClick={() => setShowPlantForm(true)}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isDarkMode
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
+                >
+                  Add New Plant
+                </button>
+              </div>
+            </div>
+
+            {showPlantForm && (
+              <form onSubmit={savePlantData} className="mb-8 space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Coffee Variety
+                  </label>
+                  <input
+                    type="text"
+                    name="coffee_variety"
+                    value={plantInputForm.coffee_variety}
+                    onChange={handlePlantInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-indigo-500'
+                    } focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Planting Date
+                  </label>
+                  <input
+                    type="date"
+                    name="planting_date"
+                    value={plantInputForm.planting_date}
+                    onChange={handlePlantInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-indigo-500'
+                    } focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Number of Trees Planted
+                  </label>
+                  <input
+                    type="number"
+                    name="number_of_tree_planted"
+                    value={plantInputForm.number_of_tree_planted}
+                    onChange={handlePlantInputChange}
+                    className={`w-full px-3 py-2 rounded-lg border ${
+                      isDarkMode
+                        ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500'
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-indigo-500'
+                    } focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors`}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-4">
                   <button
+                    type="button"
                     onClick={() => {
-                      setShowPlantForm(true);
+                      setShowPlantForm(false);
                       setIsEditingPlant(false);
                       setPlantInputForm({
                         plant_id: null,
@@ -431,183 +509,86 @@ const LandDeclaration = () => {
                         number_of_tree_planted: "",
                       });
                     }}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                    }`}
                   >
-                    Add New Plant Data
+                    Cancel
                   </button>
-                )}
-              </div>
-            </div>
+                  <button
+                    type="submit"
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      isDarkMode
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    }`}
+                  >
+                    {isEditingPlant ? 'Update Plant' : 'Add Plant'}
+                  </button>
+                </div>
+              </form>
+            )}
 
-            {/* Your existing plant data form and list */}
-            {plantDataList.length > 0 ? (
-              <div className="space-y-4">
-                {plantDataList.map((plant) => (
-                  <div key={plant.plant_id} className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div>
-                        <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Coffee Variety</p>
-                        <p className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{plant.coffee_variety}</p>
-                      </div>
-                      <div>
-                        <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Planting Date</p>
-                        <p className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                          {new Date(plant.planting_date).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Number of Trees</p>
-                        <p className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{plant.number_of_tree_planted}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex justify-end space-x-2">
+            {/* Plant List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {plantDataList.map((plant) => (
+                <div
+                  key={plant.plant_id}
+                  className={`p-6 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} hover:shadow-lg transition-shadow duration-200`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className={`text-lg font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {plant.coffee_variety}
+                    </h4>
+                    <div className="flex space-x-2">
                       <button
-                        onClick={() => {
-                          setPlantInputForm({
-                            plant_id: plant.plant_id,
-                            coffee_variety: plant.coffee_variety,
-                            planting_date: plant.planting_date.split('T')[0],
-                            number_of_tree_planted: plant.number_of_tree_planted,
-                          });
-                          setIsEditingPlant(true);
-                          setShowPlantForm(true);
-                        }}
-                        className={`px-3 py-1 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        onClick={() => editPlant(plant)}
+                        className={`p-2 rounded-lg transition-colors ${
                           isDarkMode
-                            ? 'text-indigo-400 bg-gray-600 hover:bg-gray-500 focus:ring-indigo-500'
-                            : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 focus:ring-indigo-500'
+                            ? 'hover:bg-gray-600 text-blue-400'
+                            : 'hover:bg-gray-200 text-blue-600'
                         }`}
                       >
-                        Edit
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                       </button>
                       <button
                         onClick={() => deletePlant(plant.plant_id)}
-                        className={`px-3 py-1 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                        className={`p-2 rounded-lg transition-colors ${
                           isDarkMode
-                            ? 'text-red-400 bg-gray-600 hover:bg-gray-500 focus:ring-red-500'
-                            : 'text-red-600 bg-red-50 hover:bg-red-100 focus:ring-red-500'
+                            ? 'hover:bg-gray-600 text-red-400'
+                            : 'hover:bg-gray-200 text-red-600'
                         }`}
                       >
-                        Delete
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                No plant data recorded yet. Click "Add New Plant Data" to get started.
-              </p>
-            )}
-
-            {showPlantForm && (
-              <div className={`mt-6 p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                <h4 className={`text-lg font-medium mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {isEditingPlant ? 'Edit Plant Data' : 'Add New Plant Data'}
-                </h4>
-                <form onSubmit={savePlantData} className="space-y-6">
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className="space-y-2">
                     <div>
-                      <label htmlFor="coffee_variety" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Coffee Variety
-                      </label>
-                      <input
-                        type="text"
-                        id="coffee_variety"
-                        name="coffee_variety"
-                        value={plantInputForm.coffee_variety}
-                        onChange={handlePlantInputChange}
-                        required
-                        className={`mt-1 block w-full rounded-md shadow-sm text-black ${
-                          isDarkMode 
-                            ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
-                            : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
-                        }`}
-                      />
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Planting Date</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {new Date(plant.planting_date).toLocaleDateString()}
+                      </p>
                     </div>
                     <div>
-                      <label htmlFor="planting_date" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Planting Date
-                      </label>
-                      <input
-                        type="date"
-                        id="planting_date"
-                        name="planting_date"
-                        value={plantInputForm.planting_date}
-                        onChange={handlePlantInputChange}
-                        required
-                        className={`mt-1 block w-full rounded-md shadow-sm text-black ${
-                          isDarkMode 
-                            ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
-                            : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="number_of_tree_planted" className={`block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Number of Trees Planted
-                      </label>
-                      <input
-                        type="number"
-                        id="number_of_tree_planted"
-                        name="number_of_tree_planted"
-                        value={plantInputForm.number_of_tree_planted}
-                        onChange={handlePlantInputChange}
-                        required
-                        min="1"
-                        className={`mt-1 block w-full rounded-md shadow-sm text-black ${
-                          isDarkMode 
-                            ? 'bg-gray-700 border-gray-600 text-white focus:border-indigo-500 focus:ring-indigo-500'
-                            : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
-                        }`}
-                      />
+                      <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Trees Planted</p>
+                      <p className={`text-base font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {plant.number_of_tree_planted}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPlantForm(false);
-                        setIsEditingPlant(false);
-                      }}
-                      className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                        isDarkMode
-                          ? 'text-gray-300 bg-gray-600 hover:bg-gray-500 focus:ring-gray-500'
-                          : 'text-gray-700 bg-gray-100 hover:bg-gray-200 focus:ring-gray-500'
-                      }`}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                        isDarkMode
-                          ? 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                          : 'text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-                      }`}
-                    >
-                      {isEditingPlant ? 'Update Plant Data' : 'Add Plant Data'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
-
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme={isDarkMode ? "dark" : "light"}
-      />
     </Layout>
   );
 };

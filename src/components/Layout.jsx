@@ -1,6 +1,8 @@
 import React from 'react';
 import Navbar from './Navbar';
 import { useTheme } from '../lib/ThemeContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const Layout = ({ children }) => {
   const { isDarkMode } = useTheme();
@@ -11,6 +13,7 @@ const Layout = ({ children }) => {
       <div className="flex-1 p-8">
         {children}
       </div>
+      <ToastContainer position="bottom-right" theme={isDarkMode ? "dark" : "light"} />
     </div>
   );
 };
