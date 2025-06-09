@@ -1,13 +1,16 @@
 # CoffeeFarmer
 
 
-# ADD
+# ADD 
 - admin side- financial management- add fertilizers used etc
-- reco for fertilizers
-- admin can track every session or activity of farmers
+- recommendation for fertilizers
+- admin can track every session or activity of farmers 
 - system can export summary of reports for both admin(all farmer and individual farmer) and farmer
 - interactive charts
 - make the farmer activity status functional
+- confusing on where farmer should input all data(Land Declaration, Plant Declaration, Harvest Data, Plant Status. proper sequence?)
+- after farmer register, and first login should route to Land and Plant Declaration.
+- Reach atleast 3 Objectives 
 
 
 
